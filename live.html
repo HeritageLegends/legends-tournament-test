@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heritage Legends Tournament — Live</title>
+<style>
+  :root {
+    --green: #1e5b3a; --green-dark: #123c26; --gold: #c9a227;
+    --bg: #f5f5f0; --card: #ffffff; --border: #d8d8d0;
+    --text: #222; --muted: #777; --error: #b3261e; --ok: #1e5b3a;
+    --win: #e6f4ea; --lose: #fdecea; --half: #f5f0e0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: var(--bg); color: var(--text); }
+  header { background: var(--green); color: #fff; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  header h1 { margin: 0; font-size: 1.2rem; }
+  header .sub { font-size: 0.85rem; opacity: 0.85; }
+  nav { display: flex; gap: 4px; padding: 0 20px; background: var(--green-dark); flex-wrap: wrap; }
+  nav button { background: transparent; border: none; color: #fff; opacity: 0.75; padding: 12px 16px; cursor: pointer; font-size: 0.95rem; border-bottom: 3px solid transparent; }
+  nav button.active { opacity: 1; border-bottom-color: var(--gold); font-weight: 600; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+  .card h2 { margin-top: 0; font-size: 1.05rem; color: var(--green-dark); }
+  select, input[type=number] { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  table.grid { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  table.grid th, table.grid td { border: 1px solid var(--border); padding: 4px; text-align: center; }
+  table.grid th { background: #f0f0ea; font-weight: 600; }
+  table.grid td.rowlabel, table.grid th.rowlabel { text-align: left; padding: 6px 8px; white-space: nowrap; font-weight: 600; }
+  table.grid input { width: 44px; text-align: center; padding: 4px; border: 1px solid var(--border); border-radius: 4px; }
+  table.grid .segdivider { border-left: 3px solid var(--green); }
+  .status-line { font-size: 0.9rem; margin: 4px 0; }
+  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+  .status-badge.a { background: var(--win); color: var(--green-dark); }
+  .status-badge.b { background: var(--lose); color: var(--error); }
+  .status-badge.half { background: var(--half); color: #7a5b00; }
+  .status-badge.pending { background: #eee; color: var(--muted); }
+  .save-indicator { font-size: 0.85rem; margin-left: 12px; }
+  .save-indicator.saving { color: var(--muted); }
+  .save-indicator.saved { color: var(--ok); }
+  .save-indicator.error { color: var(--error); }
+  .match-card { border-bottom: 1px solid var(--border); padding: 12px 0; }
+  .match-card:last-child { border-bottom: none; }
+  .match-title { font-weight: 600; color: var(--green-dark); margin-bottom: 4px; }
+  .totals { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 8px; }
+  .totals .pt { text-align: center; }
+  .totals .pt .num { font-size: 1.8rem; font-weight: 700; color: var(--green-dark); }
+  .totals .pt .lbl { font-size: 0.8rem; color: var(--muted); }
+  .hint { font-size: 0.8rem; color: var(--muted); }
+  [hidden] { display: none !important; }
+  button.primary { background: var(--green); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 600; }
+  button.secondary { background: #fff; color: var(--green); border: 1px solid var(--green); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+  .view-toggle-btn { background: #fff; border: 1.5px solid var(--border); color: var(--green-dark); padding: 7px 16px; border-radius: 20px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+  .view-toggle-btn.active { background: var(--green); color: #fff; border-color: var(--green); }
+  .hbh-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .hbh-nav select { flex: 1; }
+  .hbh-nav button { padding: 10px 16px; font-size: 1.1rem; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; cursor: pointer; flex-shrink: 0; }
+  .hbh-nav button:disabled { opacity: 0.35; }
+  .hbh-heading { text-align: center; font-weight: 700; color: var(--green-dark); margin: 10px 0 6px; }
+  .hbh-heading .seg { font-weight: 400; color: var(--muted); font-size: 0.85rem; display: block; margin-top: 2px; }
+  .hbh-player-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
+  .hbh-player-row:last-child { border-bottom: none; }
+  .hbh-player-name { font-weight: 600; }
+  .hbh-stroke-note { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .hbh-input-group { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .hbh-step { width: 40px; height: 40px; font-size: 1.3rem; font-weight: 700; border-radius: 8px; border: 1px solid var(--border); background: #fff; cursor: pointer; }
+  .hbh-step:active { background: #eee; }
+  .hbh-input { width: 62px; height: 48px; font-size: 1.4rem; text-align: center; border-radius: 8px; border: 1.5px solid var(--border); }
+  .hbh-input.has-stroke { border-color: var(--gold); background: #fbf3e4; }
+  .hbh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-left: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1 id="tournamentTitle">Heritage Legends Tournament</h1>
+    <div class="sub">Live Scoring &amp; Scoreboard</div>
+  </div>
+  <div class="sub" id="envBadge"></div>
+</header>
+<nav>
+  <button class="tab-btn active" data-tab="scoring">Live Scoring</button>
+  <button class="tab-btn" data-tab="scoreboard">Scoreboard</button>
+</nav>
+
+<main>
+
+  <!-- LIVE SCORING -->
+  <section id="tab-scoring" class="tab-panel">
+    <div class="card">
+      <h2>Enter Scores</h2>
+      <div class="row">
+        <select id="scDay"><option value="1">Day 1</option><option value="2">Day 2</option></select>
+        <select id="scMatch"></select>
+        <span id="saveIndicator" class="save-indicator"></span>
+      </div>
+      <div id="scStatusLines"></div>
+      <div class="row" id="scViewToggle" style="margin-top:4px;"></div>
+      <div id="scGridWrap"></div>
+      <div class="row" style="margin-top:12px;">
+        <button class="primary" onclick="saveCurrentMatch()">Save Now</button>
+        <span class="hint">Scores also autosave a couple seconds after you stop typing.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCOREBOARD -->
+  <section id="tab-scoreboard" class="tab-panel" hidden>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <select id="sbDay"><option value="1">Day 1</option><option value="2">Day 2</option></select>
+        <button class="secondary" onclick="loadScoreboard()">Refresh</button>
+      </div>
+      <div class="totals" id="sbTotals"></div>
+      <div id="sbMatches"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ====================== CONFIG ======================
+const CONFIG = {
+  test: { backendUrl: 'https://script.google.com/macros/s/AKfycbzw4xeOOwP09RCrILvt5P9iT9S8mpJXLzggO7NrzvEQy-bR-Qtn1-1tEfbEzeRTpQ/exec', key: '8O`I!r5]Hx26' },
+  live: { backendUrl: 'https://script.google.com/macros/s/AKfycbxsxCCuBXz-mbDUlVlxL-_V4YtuWqlEl0Q3J4L_z4sN6aiYkB1PvZlHDNLOS4Lh8Wbb/exec', key: '&wW3d@j>3£56' },
+};
+const envParam = new URLSearchParams(location.search).get('env');
+const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.href.toLowerCase().includes('test') ? 'test' : 'live');
+const CFG = CONFIG[ENV];
+// Bumped by hand every time this file changes — see the matching constant in
+// index.html and Code.gs.
+const LIVE_VERSION = '2026-09-05a';
+document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
+async function loadVersionBadge() {
+  const el = document.getElementById('liveVersionBadge');
+  try {
+    const res = await apiGet('getVersion');
+    el.textContent = `Page: ${LIVE_VERSION} • Backend: ${res.success ? res.data.version : 'unknown'}`;
+  } catch (err) {
+    el.textContent = `Page: ${LIVE_VERSION} • Backend: unreachable`;
+  }
+}
+
+// ====================== API HELPERS ======================
+async function apiGet(action, extra) {
+  const params = new URLSearchParams(Object.assign({ action, key: CFG.key }, extra || {}));
+  const res = await fetch(CFG.backendUrl + '?' + params.toString());
+  return res.json();
+}
+async function apiPost(action, body) {
+  const res = await fetch(CFG.backendUrl, { method: 'POST', body: JSON.stringify(Object.assign({ action, key: CFG.key }, body || {})) });
+  return res.json();
+}
+
+// ====================== TABS ======================
+document.querySelectorAll('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('main > section').forEach((p) => (p.hidden = true));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).hidden = false;
+    if (btn.dataset.tab === 'scoreboard') loadScoreboard();
+  });
+});
+
+// ====================== SHARED STATE ======================
+let settings = {}, roster = [], holeHC = {}; // holeHC: {hole: strokeIndex}
+let pairings = { 1: [], 2: [] };
+let rosterByName = {}; // Name -> {HandicapIndex}
+
+function indexRoster() {
+  rosterByName = {};
+  roster.forEach((p) => { if (p.Name) rosterByName[p.Name] = p; });
+}
+
+// strokes a player receives on one hole, from their full Handicap Index
+function strokesOnHole(handicapIndex, strokeIndex) {
+  const hc = parseFloat(handicapIndex);
+  const si = parseInt(strokeIndex, 10);
+  if (isNaN(hc) || isNaN(si) || hc <= 0) return 0;
+  const rounded = Math.round(hc);
+  const base = Math.floor(rounded / 18);
+  const extra = (si <= (rounded % 18)) ? 1 : 0;
+  return base + extra;
+}
+function netScore(gross, handicapIndex, strokeIndex) {
+  const g = parseFloat(gross);
+  if (isNaN(g) || g <= 0) return null;
+  return g - strokesOnHole(handicapIndex, strokeIndex);
+}
+// lower score wins the hole; returns 'A' | 'B' | 'Half' | 'pending'
+function compareHole(aVal, bVal) {
+  if (aVal === null || aVal === undefined || bVal === null || bVal === undefined) return 'pending';
+  if (aVal < bVal) return 'A';
+  if (bVal < aVal) return 'B';
+  return 'Half';
+}
+
+async function loadShared() {
+  const [sRes, rRes, hRes, p1Res, p2Res] = await Promise.all([
+    apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }),
+  ]);
+  if (sRes.success) { settings = sRes.data; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; }
+  if (rRes.success) { roster = rRes.data; indexRoster(); }
+  if (hRes.success) {
+    holeHC = {};
+    hRes.data.forEach((row) => { if (row.Hole) holeHC[row.Hole] = row.StrokeIndex; });
+  }
+  if (p1Res.success) pairings['1'] = p1Res.data;
+  if (p2Res.success) pairings['2'] = p2Res.data;
+}
+
+function teamNames() {
+  return { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
+}
+function matchLabel(day, row) {
+  const has = row.TeamA_P1 || row.TeamA_P2 || row.TeamB_P1 || row.TeamB_P2;
+  if (!has) return `Match ${row.MatchNum} (not set up yet)`;
+  return `Match ${row.MatchNum}: ${row.TeamA_P1 || '?'} / ${row.TeamA_P2 || '?'}  vs  ${row.TeamB_P1 || '?'} / ${row.TeamB_P2 || '?'}`;
+}
+
+// ====================== LIVE SCORING ======================
+let currentHoles = []; // in-memory grid for the currently selected match
+let saveTimer = null;
+let scViewMode = 'hbh'; // 'hbh' (one hole at a time) | 'grid' (full 18-hole scorecard)
+let scHoleIndex = 0; // 0-based, 0..17 — which hole the hbh view is showing
+
+document.getElementById('scDay').addEventListener('change', onScDayOrMatchChange);
+document.getElementById('scMatch').addEventListener('change', onScMatchSelected);
+
+function populateMatchDropdown() {
+  const day = document.getElementById('scDay').value;
+  const sel = document.getElementById('scMatch');
+  sel.innerHTML = '';
+  pairings[day].forEach((row) => {
+    const opt = document.createElement('option');
+    opt.value = row.MatchNum;
+    opt.textContent = matchLabel(day, row);
+    sel.appendChild(opt);
+  });
+}
+function onScDayOrMatchChange() { populateMatchDropdown(); onScMatchSelected(); }
+async function onScMatchSelected() {
+  const day = document.getElementById('scDay').value;
+  const matchNum = document.getElementById('scMatch').value;
+  scHoleIndex = 0;
+  if (!matchNum) { currentHoles = []; renderScoringUI(day, matchNum); return; }
+  const res = await apiGet('getScores', { day });
+  const rows = res.success ? res.data.filter((r) => String(r.MatchNum) === String(matchNum)) : [];
+  currentHoles = buildHoleGrid(day, matchNum, rows);
+  // Jump straight to the first hole that still needs a score, so a scorekeeper
+  // picking up mid-round doesn't have to page through already-entered holes —
+  // falls back to hole 1 if everything's blank or everything's already in.
+  const firstBlank = currentHoles.findIndex((h) => holeIsBlank(day, h));
+  scHoleIndex = firstBlank === -1 ? 0 : firstBlank;
+  renderScoringUI(day, matchNum);
+}
+
+function holeIsBlank(day, holeRow) {
+  const fields = day === '2'
+    ? ['TeamA_P1_Gross', 'TeamA_P2_Gross', 'TeamB_P1_Gross', 'TeamB_P2_Gross']
+    : ['TeamA_Strokes', 'TeamB_Strokes'];
+  return fields.every((f) => holeRow[f] === '' || holeRow[f] === undefined);
+}
+
+function buildHoleGrid(day, matchNum, existingRows) {
+  const byHole = {};
+  existingRows.forEach((r) => { byHole[r.Hole] = r; });
+  const holes = [];
+  for (let h = 1; h <= 18; h++) {
+    if (day === '2') {
+      const r = byHole[h] || {};
+      holes.push({ Hole: h, TeamA_P1_Gross: r.TeamA_P1_Gross || '', TeamA_P2_Gross: r.TeamA_P2_Gross || '', TeamB_P1_Gross: r.TeamB_P1_Gross || '', TeamB_P2_Gross: r.TeamB_P2_Gross || '' });
+    } else {
+      const r = byHole[h] || {};
+      holes.push({ Hole: h, TeamA_Strokes: r.TeamA_Strokes || '', TeamB_Strokes: r.TeamB_Strokes || '' });
+    }
+  }
+  return holes;
+}
+
+// Top-level dispatcher: shows the view toggle (once a match is picked) and
+// renders whichever of the two score-entry views is currently selected.
+function renderScoringUI(day, matchNum) {
+  const toggleEl = document.getElementById('scViewToggle');
+  if (!matchNum) {
+    toggleEl.innerHTML = '';
+    renderFullGrid(day, matchNum);
+    return;
+  }
+  toggleEl.innerHTML = `
+    <button type="button" class="view-toggle-btn ${scViewMode === 'hbh' ? 'active' : ''}" onclick="setScView('hbh')">Enter Scores</button>
+    <button type="button" class="view-toggle-btn ${scViewMode === 'grid' ? 'active' : ''}" onclick="setScView('grid')">Full Scorecard</button>
+  `;
+  if (scViewMode === 'hbh') renderHoleByHole(day, matchNum);
+  else renderFullGrid(day, matchNum);
+}
+function setScView(mode) {
+  scViewMode = mode;
+  const day = document.getElementById('scDay').value;
+  const matchNum = document.getElementById('scMatch').value;
+  renderScoringUI(day, matchNum);
+}
+
+// One hole at a time — just this match's players/teams, big touch-friendly
+// inputs, no horizontal scrolling. Mirrors the Gibson Group app's hole-by-hole
+// scoring page. Prev/Next (or the dropdown) move between holes; the status
+// lines above update live the same as the full grid.
+function renderHoleByHole(day, matchNum) {
+  const wrap = document.getElementById('scGridWrap');
+  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
+  const names = teamNames();
+  const h = scHoleIndex + 1; // 1-based hole number
+  const holeRow = currentHoles[scHoleIndex];
+  const si = holeHC[h];
+  const segLabel = h <= 9
+    ? (day === '2' ? 'Best Ball (front 9)' : "Captain's Choice (front 9)")
+    : (day === '2' ? 'Individual Match Play (back 9)' : 'Modified Alternate Shot (back 9)');
+
+  let rowsHtml;
+  if (day === '2') {
+    const roles = [
+      ['TeamA_P1_Gross', pairingRow.TeamA_P1], ['TeamA_P2_Gross', pairingRow.TeamA_P2],
+      ['TeamB_P1_Gross', pairingRow.TeamB_P1], ['TeamB_P2_Gross', pairingRow.TeamB_P2],
+    ];
+    rowsHtml = roles.map(([field, name]) => hbhRowHtml(field, name || '(unassigned)', name, si, holeRow)).join('');
+  } else {
+    rowsHtml = [['TeamA_Strokes', names.A, null], ['TeamB_Strokes', names.B, null]]
+      .map(([field, label]) => hbhRowHtml(field, label, null, si, holeRow)).join('');
+  }
+
+  wrap.innerHTML = `
+    <div class="hbh-nav">
+      <button type="button" onclick="stepHole(-1)" ${scHoleIndex === 0 ? 'disabled' : ''}>‹</button>
+      <select id="hbhHoleSelect" onchange="jumpToHole(this.value)">
+        ${Array.from({ length: 18 }, (_, i) => `<option value="${i}" ${i === scHoleIndex ? 'selected' : ''}>Hole ${i + 1}</option>`).join('')}
+      </select>
+      <button type="button" onclick="stepHole(1)" ${scHoleIndex === 17 ? 'disabled' : ''}>›</button>
+    </div>
+    <div class="hbh-heading">Hole ${h}<span class="seg">${escapeHtml(segLabel)}</span></div>
+    <div>${rowsHtml}</div>
+    <p class="hint" style="margin-top:10px;">On a shotgun start, holes don't need to be entered in order — jump straight to whichever hole your group just finished.</p>
+  `;
+
+  wrap.querySelectorAll('input.hbh-input').forEach((el) => {
+    el.addEventListener('input', (e) => {
+      currentHoles[scHoleIndex][e.target.dataset.field] = e.target.value;
+      renderStatusLines(day, matchNum, pairingRow);
+      scheduleAutosave(day, matchNum);
+    });
+  });
+  wrap.querySelectorAll('.hbh-step').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const field = btn.dataset.stepFor;
+      const dir = parseInt(btn.dataset.stepDir, 10);
+      const current = parseInt(currentHoles[scHoleIndex][field], 10);
+      let next = (isNaN(current) ? 0 : current) + dir;
+      if (next < 1) next = 1;
+      if (next > 15) next = 15;
+      currentHoles[scHoleIndex][field] = String(next);
+      renderHoleByHole(day, matchNum);
+      scheduleAutosave(day, matchNum);
+    });
+  });
+
+  renderStatusLines(day, matchNum, pairingRow);
+}
+
+function hbhRowHtml(field, name, handicapPlayerName, strokeIndex, holeRow) {
+  const val = holeRow[field];
+  const player = handicapPlayerName ? rosterByName[handicapPlayerName] : null;
+  const strokesHere = player ? strokesOnHole(player.HandicapIndex, strokeIndex) : 0;
+  const strokeNote = strokesHere > 0 ? `<div class="hbh-stroke-note">Gets ${strokesHere} stroke${strokesHere > 1 ? 's' : ''} here<span class="hbh-dot"></span></div>` : '';
+  return `
+    <div class="hbh-player-row">
+      <div>
+        <div class="hbh-player-name">${escapeHtml(name)}</div>
+        ${strokeNote}
+      </div>
+      <div class="hbh-input-group">
+        <button type="button" class="hbh-step" data-step-for="${field}" data-step-dir="-1">−</button>
+        <input type="number" inputmode="numeric" min="1" max="15" class="hbh-input ${strokesHere > 0 ? 'has-stroke' : ''}" value="${val}" data-field="${field}">
+        <button type="button" class="hbh-step" data-step-for="${field}" data-step-dir="1">+</button>
+      </div>
+    </div>`;
+}
+
+function stepHole(dir) {
+  scHoleIndex = Math.max(0, Math.min(17, scHoleIndex + dir));
+  const day = document.getElementById('scDay').value;
+  const matchNum = document.getElementById('scMatch').value;
+  renderHoleByHole(day, matchNum);
+}
+function jumpToHole(idx) {
+  scHoleIndex = parseInt(idx, 10) || 0;
+  const day = document.getElementById('scDay').value;
+  const matchNum = document.getElementById('scMatch').value;
+  renderHoleByHole(day, matchNum);
+}
+
+// The original full 18-hole-wide scorecard grid — kept as an alternate view
+// (handy on a tablet, or to eyeball the whole round at once).
+function renderFullGrid(day, matchNum) {
+  const wrap = document.getElementById('scGridWrap');
+  if (!matchNum) { wrap.innerHTML = '<p class="hint">Set up this match\'s pairing first (Admin → Pairings) before entering scores.</p>'; document.getElementById('scStatusLines').innerHTML = ''; return; }
+  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
+  const names = teamNames();
+
+  let headerCells = '<th class="rowlabel"></th>';
+  for (let h = 1; h <= 18; h++) headerCells += `<th class="${h === 10 ? 'segdivider' : ''}">${h}</th>`;
+
+  let bodyRows = '';
+  if (day === '2') {
+    const roles = [
+      ['TeamA_P1', pairingRow.TeamA_P1], ['TeamA_P2', pairingRow.TeamA_P2],
+      ['TeamB_P1', pairingRow.TeamB_P1], ['TeamB_P2', pairingRow.TeamB_P2],
+    ];
+    roles.forEach(([field, name]) => {
+      let cells = `<td class="rowlabel">${escapeHtml(name || '(unassigned)')}</td>`;
+      for (let h = 1; h <= 18; h++) {
+        const val = currentHoles[h - 1][field + '_Gross'];
+        cells += `<td class="${h === 10 ? 'segdivider' : ''}"><input type="number" min="1" max="15" value="${val}" data-hole="${h}" data-field="${field}_Gross"></td>`;
+      }
+      bodyRows += `<tr>${cells}</tr>`;
+    });
+  } else {
+    [['TeamA_Strokes', names.A], ['TeamB_Strokes', names.B]].forEach(([field, label]) => {
+      let cells = `<td class="rowlabel">${escapeHtml(label)}</td>`;
+      for (let h = 1; h <= 18; h++) {
+        const val = currentHoles[h - 1][field];
+        cells += `<td class="${h === 10 ? 'segdivider' : ''}"><input type="number" min="1" max="15" value="${val}" data-hole="${h}" data-field="${field}"></td>`;
+      }
+      bodyRows += `<tr>${cells}</tr>`;
+    });
+  }
+
+  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="grid"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>
+    <p class="hint" style="margin-top:8px;">Holes 1–9: ${day === '2' ? 'Best Ball' : "Captain's Choice"}. Holes 10–18: ${day === '2' ? 'Individual Match Play' : 'Modified Alternate Shot'}. Enter whichever holes your group has finished — order doesn't matter for a shotgun start.</p>`;
+
+  wrap.querySelectorAll('input').forEach((el) => {
+    el.addEventListener('input', (e) => {
+      const h = parseInt(e.target.dataset.hole, 10);
+      currentHoles[h - 1][e.target.dataset.field] = e.target.value;
+      renderStatusLines(day, matchNum, pairingRow);
+      scheduleAutosave(day, matchNum);
+    });
+  });
+
+  renderStatusLines(day, matchNum, pairingRow);
+}
+
+function scheduleAutosave(day, matchNum) {
+  setSaveIndicator('saving', 'Saving…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => saveCurrentMatch(), 1500);
+}
+function setSaveIndicator(cls, text) {
+  const el = document.getElementById('saveIndicator');
+  el.className = 'save-indicator ' + cls;
+  el.textContent = text;
+}
+async function saveCurrentMatch() {
+  const day = document.getElementById('scDay').value;
+  const matchNum = document.getElementById('scMatch').value;
+  if (!matchNum) return;
+  clearTimeout(saveTimer);
+  setSaveIndicator('saving', 'Saving…');
+  try {
+    const res = await apiPost('saveMatchScores', { day, matchNum, holes: JSON.stringify(currentHoles) });
+    setSaveIndicator(res.success ? 'saved' : 'error', res.success ? 'Saved ✓' : res.error);
+  } catch (err) {
+    setSaveIndicator('error', 'Network error');
+  }
+}
+
+// live status line(s) shown above the grid as you type, computed entirely client-side
+function renderStatusLines(day, matchNum, pairingRow) {
+  const names = teamNames();
+  const el = document.getElementById('scStatusLines');
+  if (day === '2') {
+    const bb = computeDay2BestBall(pairingRow, currentHoles);
+    const mp1 = computeDay2MatchPlay(pairingRow, currentHoles, 1);
+    const mp2 = computeDay2MatchPlay(pairingRow, currentHoles, 2);
+    el.innerHTML = [
+      statusLineHtml('Best Ball (front 9)', bb, names.A, names.B),
+      statusLineHtml(`Match Play: ${pairingRow.MP1_TeamA || '?'} vs ${pairingRow.MP1_TeamB || '?'}`, mp1, pairingRow.MP1_TeamA, pairingRow.MP1_TeamB),
+      statusLineHtml(`Match Play: ${pairingRow.MP2_TeamA || '?'} vs ${pairingRow.MP2_TeamB || '?'}`, mp2, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB),
+    ].join('');
+  } else {
+    const cc = computeDay1Segment(currentHoles, 1, 9, 'TeamA_Strokes', 'TeamB_Strokes');
+    const asg = computeDay1Segment(currentHoles, 10, 18, 'TeamA_Strokes', 'TeamB_Strokes');
+    el.innerHTML = [
+      statusLineHtml("Captain's Choice (front 9)", cc, names.A, names.B),
+      statusLineHtml('Modified Alternate Shot (back 9)', asg, names.A, names.B),
+    ].join('');
+  }
+}
+
+function statusLineHtml(label, seg, aName, bName) {
+  const cls = seg.leader === 'A' ? 'a' : seg.leader === 'B' ? 'b' : seg.leader === 'Half' ? 'half' : 'pending';
+  return `<div class="status-line"><strong>${escapeHtml(label)}:</strong> <span class="status-badge ${cls}">${escapeHtml(seg.text)}</span></div>`;
+}
+
+// ---- segment computation (shared by scoring page + scoreboard) ----
+
+// Day 1: raw strokes, one row per hole with TeamA_Strokes/TeamB_Strokes
+function computeDay1Segment(holeRows, startHole, endHole, aField, bField) {
+  let aWins = 0, bWins = 0, halves = 0, decided = 0;
+  for (let h = startHole; h <= endHole; h++) {
+    const row = holeRows[h - 1];
+    const a = row[aField] === '' ? null : parseFloat(row[aField]);
+    const b = row[bField] === '' ? null : parseFloat(row[bField]);
+    const result = compareHole(a, b);
+    if (result === 'pending') continue;
+    decided++;
+    if (result === 'A') aWins++; else if (result === 'B') bWins++; else halves++;
+  }
+  const total = endHole - startHole + 1;
+  const remaining = total - decided;
+  const up = aWins - bWins;
+  return buildSegmentResult(up, decided, remaining, total);
+}
+
+function buildSegmentResult(up, decided, remaining, total) {
+  if (remaining === 0) {
+    if (up > 0) return { leader: 'A', final: true, points: { A: 1, B: 0 }, text: `Final — ${up} up` };
+    if (up < 0) return { leader: 'B', final: true, points: { A: 0, B: 1 }, text: `Final — ${Math.abs(up)} up` };
+    return { leader: 'Half', final: true, points: { A: 0.5, B: 0.5 }, text: 'Final — Halved' };
+  }
+  if (decided === 0) return { leader: 'pending', final: false, points: null, text: 'Not started' };
+  if (up === 0) return { leader: 'pending', final: false, points: null, text: `All Square thru ${decided}` };
+  const leader = up > 0 ? 'A' : 'B';
+  const clinched = Math.abs(up) > remaining;
+  return { leader, final: false, points: null, text: `${Math.abs(up)} up thru ${decided}${clinched ? ' (decided, holes still to enter)' : ''}` };
+}
+
+// Day 2 Best Ball: team's hole score = better (lower) net of its two players
+function computeDay2BestBall(pairingRow, holeRows) {
+  let aWins = 0, bWins = 0, halves = 0, decided = 0;
+  for (let h = 1; h <= 9; h++) {
+    const row = holeRows[h - 1];
+    const si = holeHC[h];
+    const aNets = [netScore(row.TeamA_P1_Gross, playerHandicap(pairingRow.TeamA_P1), si), netScore(row.TeamA_P2_Gross, playerHandicap(pairingRow.TeamA_P2), si)].filter((v) => v !== null);
+    const bNets = [netScore(row.TeamB_P1_Gross, playerHandicap(pairingRow.TeamB_P1), si), netScore(row.TeamB_P2_Gross, playerHandicap(pairingRow.TeamB_P2), si)].filter((v) => v !== null);
+    const aBest = aNets.length ? Math.min(...aNets) : null;
+    const bBest = bNets.length ? Math.min(...bNets) : null;
+    const result = compareHole(aBest, bBest);
+    if (result === 'pending') continue;
+    decided++;
+    if (result === 'A') aWins++; else if (result === 'B') bWins++; else halves++;
+  }
+  return buildSegmentResult(aWins - bWins, decided, 9 - decided, 9);
+}
+
+// Day 2 Individual Match Play: mpNum is 1 or 2 (MP1_* / MP2_* fields)
+function computeDay2MatchPlay(pairingRow, holeRows, mpNum) {
+  const aName = pairingRow['MP' + mpNum + '_TeamA'];
+  const bName = pairingRow['MP' + mpNum + '_TeamB'];
+  let aWins = 0, bWins = 0, halves = 0, decided = 0;
+  for (let h = 10; h <= 18; h++) {
+    const row = holeRows[h - 1];
+    const si = holeHC[h];
+    const aField = grossFieldForPlayer(pairingRow, aName);
+    const bField = grossFieldForPlayer(pairingRow, bName);
+    const aNet = aField ? netScore(row[aField], playerHandicap(aName), si) : null;
+    const bNet = bField ? netScore(row[bField], playerHandicap(bName), si) : null;
+    const result = compareHole(aNet, bNet);
+    if (result === 'pending') continue;
+    decided++;
+    if (result === 'A') aWins++; else if (result === 'B') bWins++; else halves++;
+  }
+  return buildSegmentResult(aWins - bWins, decided, 9 - decided, 9);
+}
+
+function grossFieldForPlayer(pairingRow, name) {
+  if (!name) return null;
+  if (name === pairingRow.TeamA_P1) return 'TeamA_P1_Gross';
+  if (name === pairingRow.TeamA_P2) return 'TeamA_P2_Gross';
+  if (name === pairingRow.TeamB_P1) return 'TeamB_P1_Gross';
+  if (name === pairingRow.TeamB_P2) return 'TeamB_P2_Gross';
+  return null;
+}
+function playerHandicap(name) {
+  const p = rosterByName[name];
+  return p ? p.HandicapIndex : '';
+}
+
+// ====================== SCOREBOARD ======================
+document.getElementById('sbDay').addEventListener('change', loadScoreboard);
+
+async function loadScoreboard() {
+  const day = document.getElementById('sbDay').value;
+  const res = await apiGet('getScores', { day });
+  const scoresByMatch = {};
+  if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
+
+  const names = teamNames();
+  let totalA = 0, totalB = 0, decidedCount = 0, totalPossible = 0;
+  const cardsHtml = pairings[day].map((row) => {
+    const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
+    let segs, segLabels;
+    if (day === '2') {
+      segs = [computeDay2BestBall(row, holeRows), computeDay2MatchPlay(row, holeRows, 1), computeDay2MatchPlay(row, holeRows, 2)];
+      segLabels = ['Best Ball', `${row.MP1_TeamA || '?'} vs ${row.MP1_TeamB || '?'}`, `${row.MP2_TeamA || '?'} vs ${row.MP2_TeamB || '?'}`];
+    } else {
+      segs = [computeDay1Segment(holeRows, 1, 9, 'TeamA_Strokes', 'TeamB_Strokes'), computeDay1Segment(holeRows, 10, 18, 'TeamA_Strokes', 'TeamB_Strokes')];
+      segLabels = ["Captain's Choice", 'Modified Alternate Shot'];
+    }
+    segs.forEach((s) => {
+      totalPossible += 1;
+      if (s.final) { totalA += s.points.A; totalB += s.points.B; decidedCount++; }
+    });
+    const lines = segs.map((s, i) => statusLineHtml(segLabels[i], s, names.A, names.B)).join('');
+    return `<div class="match-card"><div class="match-title">${escapeHtml(matchLabel(day, row))}</div>${lines}</div>`;
+  }).join('');
+
+  document.getElementById('sbTotals').innerHTML = `
+    <div class="pt"><div class="num">${totalA}</div><div class="lbl">${escapeHtml(names.A)}</div></div>
+    <div class="pt"><div class="num">${totalB}</div><div class="lbl">${escapeHtml(names.B)}</div></div>
+    <div class="pt"><div class="num">${decidedCount} / ${totalPossible}</div><div class="lbl">matches decided (Day ${day})</div></div>
+  `;
+  document.getElementById('sbMatches').innerHTML = cardsHtml || '<p class="hint">No matches set up yet.</p>';
+}
+
+// ====================== UTIL ======================
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ====================== BOOT ======================
+(async function boot() {
+  loadVersionBadge();
+  await loadShared();
+  populateMatchDropdown();
+  await onScMatchSelected();
+})();
+</script>
+</body>
+</html>
