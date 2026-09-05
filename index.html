@@ -71,7 +71,10 @@
   }
   .gate input { text-align: center; font-size: 1.2rem; letter-spacing: 2px; }
   [hidden] { display: none !important; }
-  .roster-team-col { width: 110px; }
+  #rosterTable { table-layout: fixed; }
+  .roster-team-col { width: 220px; }
+  .roster-narrow-col { width: 80px; }
+  .roster-action-col { width: 64px; }
   .placeholder-badge {
     display: inline-block; background: #fff3cd; color: #7a5b00; border-radius: 4px;
     padding: 2px 8px; font-size: 0.75rem; margin-left: 8px;
@@ -150,9 +153,9 @@
             <tr>
               <th>Name</th>
               <th class="roster-team-col">Team</th>
-              <th>Handicap Index</th>
-              <th>Tee</th>
-              <th></th>
+              <th class="roster-narrow-col">Handicap Index</th>
+              <th class="roster-narrow-col">Tee</th>
+              <th class="roster-action-col"></th>
             </tr>
           </thead>
           <tbody id="rosterBody"></tbody>
@@ -235,7 +238,7 @@ const ADMIN_PIN = '1234'; // change this before you publish the repo
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-05a';
+const ADMIN_VERSION = '2026-09-05c';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
