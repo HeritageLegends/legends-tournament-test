@@ -97,9 +97,10 @@
       <h1 id="tournamentTitle">Heritage Legends Tournament</h1>
       <div class="sub" id="tournamentSub">Admin — Team &amp; Pairing Setup</div>
     </div>
-    <div class="sub">
+    <div class="sub" style="text-align:right;">
       <div id="envBadge"></div>
       <div id="versionBadge" style="font-size:11px; opacity:0.7;"></div>
+      <div style="margin-top:6px;"><a id="liveLinkBtn" href="live.html" target="_blank" style="color:#fff;">Open Scoring Page (live.html) ↗</a></div>
     </div>
   </header>
   <nav>
@@ -263,7 +264,7 @@ const ADMIN_PIN = '1234'; // change this before you publish the repo
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-05e';
+const ADMIN_VERSION = '2026-09-05f';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -292,6 +293,9 @@ function checkPin() {
   document.getElementById('gate').hidden = true;
   document.getElementById('app').hidden = false;
   document.getElementById('envBadge').textContent = ENV.toUpperCase();
+  // Carry the ?env= override (if any) through to the scoring page, so testing
+  // locally with ?env=test from this page also opens the test scoring page.
+  document.getElementById('liveLinkBtn').href = 'live.html' + location.search;
   init();
 }
 document.getElementById('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') checkPin(); });
