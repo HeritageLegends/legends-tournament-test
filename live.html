@@ -131,7 +131,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-05a';
+const LIVE_VERSION = '2026-09-05c';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -227,6 +227,26 @@ let saveTimer = null;
 let scViewMode = 'hbh'; // 'hbh' (one hole at a time) | 'grid' (full 18-hole scorecard)
 let scHoleIndex = 0; // 0-based, 0..17 — which hole the hbh view is showing
 
+// ---- per-match PIN gate ----
+// A match's PIN (set by the admin in the Pairings table) is optional — blank
+// means anyone with this link can still enter that match's scores, same as
+// before this existed. When set, this device has to enter it once; it's then
+// remembered here (localStorage) so the same phone doesn't have to re-enter
+// it every time. This only gates the score-ENTRY UI — the Scoreboard tab is
+// unaffected and stays open/read-only to everyone regardless.
+function pinStorageKey(day, matchNum) { return `legends_pin_${ENV}_${day}_${matchNum}`; }
+function getStoredPin(day, matchNum) {
+  try { return localStorage.getItem(pinStorageKey(day, matchNum)); } catch (e) { return null; }
+}
+function storePin(day, matchNum, pin) {
+  try { localStorage.setItem(pinStorageKey(day, matchNum), pin); } catch (e) {}
+}
+function matchIsUnlocked(day, matchNum, pairingRow) {
+  const requiredPin = ((pairingRow && pairingRow.PIN) || '').trim();
+  if (!requiredPin) return true; // no PIN set for this match — open to anyone
+  return getStoredPin(day, matchNum) === requiredPin;
+}
+
 document.getElementById('scDay').addEventListener('change', onScDayOrMatchChange);
 document.getElementById('scMatch').addEventListener('change', onScMatchSelected);
 
@@ -290,12 +310,59 @@ function renderScoringUI(day, matchNum) {
     renderFullGrid(day, matchNum);
     return;
   }
+  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
+  if (!matchIsUnlocked(day, matchNum, pairingRow)) {
+    toggleEl.innerHTML = '';
+    renderPinLock(day, matchNum, pairingRow);
+    return;
+  }
   toggleEl.innerHTML = `
     <button type="button" class="view-toggle-btn ${scViewMode === 'hbh' ? 'active' : ''}" onclick="setScView('hbh')">Enter Scores</button>
     <button type="button" class="view-toggle-btn ${scViewMode === 'grid' ? 'active' : ''}" onclick="setScView('grid')">Full Scorecard</button>
+    ${pairingRow && pairingRow.PIN ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Change PIN</button>` : ''}
   `;
   if (scViewMode === 'hbh') renderHoleByHole(day, matchNum);
   else renderFullGrid(day, matchNum);
+}
+
+// Clears this device's remembered PIN for this match and re-shows the lock
+// screen — for handing the phone to a different foursome, or if the wrong
+// code got saved. (If the admin changes a match's PIN, this device is
+// automatically re-locked next time it's selected — no need for this.)
+function lockMatch(day, matchNum) {
+  try { localStorage.removeItem(pinStorageKey(day, matchNum)); } catch (e) {}
+  renderScoringUI(day, matchNum);
+}
+
+// Shown instead of the scoring UI when this match has a PIN set and this
+// device hasn't unlocked it yet.
+function renderPinLock(day, matchNum, pairingRow) {
+  document.getElementById('scStatusLines').innerHTML = '';
+  const wrap = document.getElementById('scGridWrap');
+  wrap.innerHTML = `
+    <div class="card" style="margin:0; background:#fbf3e4; border-color:var(--gold);">
+      <p class="hint" style="margin-top:0;">This match is protected — enter the PIN given to this foursome to enter scores. (The Scoreboard tab is still open to everyone.)</p>
+      <div class="row">
+        <input type="text" inputmode="numeric" id="matchPinInput" placeholder="PIN" maxlength="8" style="font-size:1.1rem; padding:10px 12px; width:120px;">
+        <button type="button" class="primary" onclick="tryUnlockMatch('${day}', '${matchNum}')">Unlock</button>
+      </div>
+      <div id="pinError" class="hint" style="color:var(--error);"></div>
+    </div>
+  `;
+  const input = document.getElementById('matchPinInput');
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlockMatch(day, matchNum); });
+  input.focus();
+}
+function tryUnlockMatch(day, matchNum) {
+  const entered = document.getElementById('matchPinInput').value.trim();
+  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
+  const requiredPin = ((pairingRow && pairingRow.PIN) || '').trim();
+  if (entered && entered === requiredPin) {
+    storePin(day, matchNum, entered);
+    renderScoringUI(day, matchNum);
+  } else {
+    document.getElementById('pinError').textContent = 'Incorrect PIN — check with your foursome or the admin.';
+  }
 }
 function setScView(mode) {
   scViewMode = mode;
