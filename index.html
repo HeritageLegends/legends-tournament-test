@@ -108,6 +108,7 @@
     <button class="tab-btn" data-tab="day1">Day 1 Pairings</button>
     <button class="tab-btn" data-tab="day2">Day 2 Pairings</button>
     <button class="tab-btn" data-tab="holehc">Hole Handicaps</button>
+    <button class="tab-btn" data-tab="print">Print Scorecards</button>
   </nav>
 
   <main>
@@ -151,7 +152,7 @@
         <table id="rosterTable">
           <thead>
             <tr>
-              <th>Name</th>
+              <th class="roster-team-col">Name</th>
               <th class="roster-team-col">Team</th>
               <th class="roster-narrow-col">Handicap Index</th>
               <th class="roster-narrow-col">Tee</th>
@@ -177,11 +178,13 @@
         <p class="hint">Each match is 2 players per team. Use placeholder matchups now — everything here is editable later once captains set real pairings.</p>
         <table>
           <thead>
-            <tr><th></th><th colspan="2" id="day1TeamAHeader">Team A</th><th colspan="2" id="day1TeamBHeader">Team B</th><th>Start Hole</th><th>Tee</th></tr>
+            <tr><th></th><th colspan="2" id="day1TeamAHeader">Team A</th><th colspan="2" id="day1TeamBHeader">Team B</th><th>Start Hole</th><th>Tee</th><th>Scorekeeper PIN</th></tr>
           </thead>
           <tbody id="day1Body"></tbody>
         </table>
+        <p class="hint">A match's PIN (if set) is what live.html asks a scorekeeper for before letting them enter that match's scores — leave blank to leave a match open to anyone with the link. Tell each foursome their PIN before the round (e.g. write it on their scorecard).</p>
         <div style="margin-top:16px;">
+          <button class="secondary" onclick="generateMissingPins('1')">Generate PINs for matches without one</button>
           <button class="primary" onclick="savePairings('1')">Save Day 1 Pairings</button>
         </div>
         <div id="day1Status" class="status"></div>
@@ -195,11 +198,13 @@
         <p class="hint">Best Ball uses the same 2-vs-2 foursome as the match below. For the back-nine Individual Match Play, pick which player from each team faces which — defaults to Player 1 vs Player 1 and Player 2 vs Player 2.</p>
         <table>
           <thead>
-            <tr><th></th><th colspan="2" id="day2TeamAHeader">Team A</th><th colspan="2" id="day2TeamBHeader">Team B</th><th>Tee</th></tr>
+            <tr><th></th><th colspan="2" id="day2TeamAHeader">Team A</th><th colspan="2" id="day2TeamBHeader">Team B</th><th>Tee</th><th>Scorekeeper PIN</th></tr>
           </thead>
           <tbody id="day2Body"></tbody>
         </table>
+        <p class="hint">A match's PIN (if set) is what live.html asks a scorekeeper for before letting them enter that match's scores — leave blank to leave a match open to anyone with the link. Tell each foursome their PIN before the round (e.g. write it on their scorecard).</p>
         <div style="margin-top:16px;">
+          <button class="secondary" onclick="generateMissingPins('2')">Generate PINs for matches without one</button>
           <button class="primary" onclick="savePairings('2')">Save Day 2 Pairings</button>
         </div>
         <div id="day2Status" class="status"></div>
@@ -217,6 +222,26 @@
         </table>
         <button class="primary" onclick="saveHoleHandicaps()" style="margin-top:16px;">Save Hole Handicaps</button>
         <div id="holeHcStatus" class="status"></div>
+      </div>
+    </section>
+
+    <!-- PRINT SCORECARDS -->
+    <section id="tab-print" class="tab-panel" hidden>
+      <div class="card">
+        <h2>Print Blank Scorecards <span class="placeholder-badge">Day 2 only</span></h2>
+        <p class="hint">
+          For players who'd rather write scores by hand than use Live Scoring on a phone. Prints one
+          paper scorecard per match with the tournament name, date, tee, hole-by-hole Stroke Index
+          (and Par, if you've entered it), and each player's handicap strokes marked as dots on the
+          holes they apply to — so they can write in gross scores and circle the ones where a stroke
+          counts. Day 1 isn't offered here since it's one team score per hole, not per player, and
+          doesn't use handicaps.
+        </p>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <select id="printMatchSelect"></select>
+          <button class="primary" onclick="printScorecards()">Print</button>
+        </div>
+        <div id="printStatus" class="status"></div>
       </div>
     </section>
 
@@ -238,7 +263,7 @@ const ADMIN_PIN = '1234'; // change this before you publish the repo
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-05c';
+const ADMIN_VERSION = '2026-09-05e';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -556,18 +581,28 @@ async function loadPairings(day) {
     pairings[day] = defaultPairingRows(day);
   }
   renderPairings(day);
+  if (day === '2' || day === 2) populatePrintMatchSelect();
 }
 
 function defaultPairingRows(day) {
   const rows = [];
   for (let m = 1; m <= 9; m++) {
     if (day === '2' || day === 2) {
-      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', Tee: '', MP1_TeamA: '', MP1_TeamB: '', MP2_TeamA: '', MP2_TeamB: '', MPSwapped: false });
+      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', Tee: '', PIN: '', MP1_TeamA: '', MP1_TeamB: '', MP2_TeamA: '', MP2_TeamB: '', MPSwapped: false });
     } else {
-      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '', Tee: '' });
+      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '', Tee: '', PIN: '' });
     }
   }
   return rows;
+}
+
+// Random 4-digit PIN, as a string (keeps a leading zero if it lands on one).
+function randomPin4() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+function generateMissingPins(day) {
+  pairings[day].forEach((row) => { if (!row.PIN) row.PIN = randomPin4(); });
+  renderPairings(day);
 }
 
 function renderPairings(day) {
@@ -596,6 +631,10 @@ function pairingRowEl(day, row, idx) {
       : `<td><input type="number" value="${row.StartHole || ''}" ${base} data-field="StartHole" style="width:70px;"></td>
          <td><input type="text" value="${escapeAttr(row.Tee || '')}" ${base} data-field="Tee" style="width:80px;"></td>`
     }
+    <td>
+      <input type="text" value="${escapeAttr(row.PIN || '')}" ${base} data-field="PIN" maxlength="8" placeholder="open" style="width:70px;">
+      <button type="button" class="link" data-genpin-idx="${idx}" style="font-size:0.75rem; padding:0;">generate</button>
+    </td>
   `;
   tr.querySelectorAll('select, input').forEach((el) => {
     if (!el.dataset.field) return;
@@ -607,6 +646,10 @@ function pairingRowEl(day, row, idx) {
         renderPairings(day); // refresh the "vs" line below the row
       }
     });
+  });
+  tr.querySelector('[data-genpin-idx]').addEventListener('click', () => {
+    pairings[day][idx].PIN = randomPin4();
+    renderPairings(day);
   });
 
   if (isDay2) {
@@ -649,6 +692,7 @@ function syncMatchPlayPairing(r) {
 function refreshPairingDropdownSources() {
   renderPairings('1');
   renderPairings('2');
+  populatePrintMatchSelect();
 }
 
 async function savePairings(day) {
@@ -673,6 +717,7 @@ async function savePairings(day) {
     if (res.success) {
       pairings[day] = res.data;
       renderPairings(day);
+      if (day === '2' || day === 2) populatePrintMatchSelect();
       showStatus(statusId, true, 'Saved.');
     } else {
       showStatus(statusId, false, res.error);
@@ -680,6 +725,135 @@ async function savePairings(day) {
   } catch (err) {
     showStatus(statusId, false, 'Network error: ' + err.message);
   }
+}
+
+// ====================== PRINT SCORECARDS (Day 2 only) ======================
+// Same strokes-per-hole math as live.html's scoring page, duplicated here
+// since this file doesn't share code with it — every player gets strokes on
+// their own hardest holes based on their full Handicap Index from the Roster.
+function strokesOnHolePrint(handicapIndex, strokeIndex) {
+  const hc = parseFloat(handicapIndex);
+  const si = parseInt(strokeIndex, 10);
+  if (isNaN(hc) || isNaN(si) || hc <= 0) return 0;
+  const rounded = Math.round(hc);
+  const base = Math.floor(rounded / 18);
+  const extra = (si <= (rounded % 18)) ? 1 : 0;
+  return base + extra;
+}
+function hasPlayers(row) {
+  return !!(row.TeamA_P1 || row.TeamA_P2 || row.TeamB_P1 || row.TeamB_P2);
+}
+function matchLabelShort(row) {
+  return `${row.TeamA_P1 || '?'} / ${row.TeamA_P2 || '?'} vs ${row.TeamB_P1 || '?'} / ${row.TeamB_P2 || '?'}`;
+}
+function formatDateNice(iso) {
+  if (!iso) return 'date TBD';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function populatePrintMatchSelect() {
+  const sel = document.getElementById('printMatchSelect');
+  if (!sel) return;
+  const rows = (pairings['2'] || []).filter(hasPlayers);
+  sel.innerHTML = '<option value="all">All Day 2 matches</option>' +
+    rows.map((r) => `<option value="${r.MatchNum}">Match ${r.MatchNum}: ${escapeHtml(matchLabelShort(r))}</option>`).join('');
+}
+
+const PRINT_CSS = `
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; padding: 24px; }
+  .scorecard { page-break-after: always; margin-bottom: 24px; }
+  .scorecard:last-child { page-break-after: auto; }
+  .sc-title { font-size: 1.3rem; font-weight: 700; }
+  .sc-sub { font-size: 0.95rem; color: #444; margin-top: 2px; }
+  .sc-teams { font-size: 1rem; font-weight: 600; margin-top: 4px; }
+  table.sc-table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 0.8rem; }
+  table.sc-table th, table.sc-table td { border: 1px solid #999; padding: 5px 2px; text-align: center; min-width: 22px; }
+  table.sc-table th.sc-name, table.sc-table td.sc-name { text-align: left; padding: 5px 8px; white-space: nowrap; font-weight: 600; min-width: 130px; }
+  tr.sc-meta td { font-weight: 600; background: #f2f2f2; }
+  td.sc-sum, th.sc-sum { background: #fafafa; }
+  .sc-dots { color: #b3261e; font-weight: 700; letter-spacing: 1px; }
+  .sc-tee { font-weight: 400; color: #666; font-size: 0.85em; }
+  .seg { border-left: 2px solid #333; }
+  .sc-note { font-size: 0.78rem; color: #555; margin-top: 10px; }
+  .print-bar { margin-bottom: 20px; }
+  .print-bar button { font-size: 0.95rem; padding: 8px 16px; cursor: pointer; }
+  @media print { .print-bar { display: none; } }
+`;
+
+function scorecardCardHtml(row) {
+  const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
+  const hasPar = holeHandicaps.some((h) => h.Par !== '' && h.Par != null);
+  let holeHeaderCells = '';
+  let parCells = '';
+  let hcpCells = '';
+  for (let h = 1; h <= 18; h++) {
+    const hh = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
+    const segClass = h === 10 ? 'seg' : '';
+    holeHeaderCells += `<th class="${segClass}">${h}</th>`;
+    parCells += `<td class="${segClass}">${hh.Par || ''}</td>`;
+    hcpCells += `<td class="${segClass}">${hh.StrokeIndex || ''}</td>`;
+    if (h === 9) { holeHeaderCells += '<th class="sc-sum">OUT</th>'; parCells += '<td class="sc-sum"></td>'; hcpCells += '<td class="sc-sum"></td>'; }
+    if (h === 18) { holeHeaderCells += '<th class="sc-sum">IN</th><th class="sc-sum">TOT</th>'; parCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; hcpCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; }
+  }
+  const players = [
+    ['TeamA_P1', row.TeamA_P1], ['TeamA_P2', row.TeamA_P2],
+    ['TeamB_P1', row.TeamB_P1], ['TeamB_P2', row.TeamB_P2],
+  ];
+  const playerRows = players.map(([, name]) => {
+    const p = roster.find((r) => r.Name === name);
+    const hc = p ? p.HandicapIndex : '';
+    const tee = p ? p.Tee : '';
+    let cells = '';
+    for (let h = 1; h <= 18; h++) {
+      const hh = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
+      const strokes = name ? strokesOnHolePrint(hc, hh.StrokeIndex) : 0;
+      const dots = strokes > 0 ? `<span class="sc-dots">${'&bull;'.repeat(strokes)}</span>` : '';
+      const segClass = h === 10 ? 'seg' : '';
+      cells += `<td class="${segClass}">${dots}</td>`;
+      if (h === 9) cells += '<td class="sc-sum"></td>';
+      if (h === 18) cells += '<td class="sc-sum"></td><td class="sc-sum"></td>';
+    }
+    const teeHtml = tee ? ` <span class="sc-tee">(${escapeHtml(tee)})</span>` : '';
+    return `<tr><td class="sc-name">${escapeHtml(name || '(unassigned)')}${teeHtml}</td>${cells}</tr>`;
+  }).join('');
+
+  return `
+    <div class="scorecard">
+      <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
+      <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
+      <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
+      <table class="sc-table">
+        <thead><tr><th class="sc-name">Player</th>${holeHeaderCells}</tr></thead>
+        <tbody>
+          ${hasPar ? `<tr class="sc-meta"><td class="sc-name">Par</td>${parCells}</tr>` : ''}
+          <tr class="sc-meta"><td class="sc-name">Hcp</td>${hcpCells}</tr>
+          ${playerRows}
+        </tbody>
+      </table>
+      <p class="sc-note">&bull; marks a hole where that player gets a handicap stroke (&bull;&bull; = two strokes) &mdash; write the gross score in the box, circle it when a stroke applies, for net.</p>
+    </div>
+  `;
+}
+
+function printScorecards() {
+  const sel = document.getElementById('printMatchSelect').value;
+  if (!sel) { showStatus('printStatus', false, 'No Day 2 matches set up yet.'); return; }
+  const all = (pairings['2'] || []).filter(hasPlayers);
+  const rows = sel === 'all' ? all : all.filter((r) => String(r.MatchNum) === sel);
+  if (!rows.length) { showStatus('printStatus', false, 'No matches to print — set up Day 2 pairings first.'); return; }
+  const cardsHtml = rows.map(scorecardCardHtml).join('');
+  const win = window.open('', '_blank');
+  if (!win) { showStatus('printStatus', false, 'Your browser blocked the print window — allow pop-ups for this site and try again.'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><title>Scorecards</title><style>${PRINT_CSS}</style></head><body>
+    <div class="print-bar"><button onclick="window.print()">Print</button></div>
+    ${cardsHtml}
+  </body></html>`);
+  win.document.close();
+  win.focus();
+  showStatus('printStatus', true, `Opened ${rows.length} scorecard${rows.length > 1 ? 's' : ''} in a new tab.`);
 }
 
 // ====================== UTIL ======================
