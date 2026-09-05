@@ -101,6 +101,7 @@
     <button class="tab-btn" data-tab="roster">Roster</button>
     <button class="tab-btn" data-tab="day1">Day 1 Pairings</button>
     <button class="tab-btn" data-tab="day2">Day 2 Pairings</button>
+    <button class="tab-btn" data-tab="holehc">Hole Handicaps</button>
   </nav>
 
   <main>
@@ -126,6 +127,13 @@
         </div>
         <button class="primary" onclick="saveSettings()">Save Settings</button>
         <div id="settingsStatus" class="status"></div>
+      </div>
+
+      <div class="card" style="border: 1px solid #c0392b;">
+        <h2 style="color:#c0392b;">Start New Season</h2>
+        <p class="hint">Once this year's tournament is over and you're ready to set up next year's: this archives everything from this season (settings, roster, pairings, scores) into hidden backup tabs in the Google Sheet, then clears pairings and scores and resets every player's team back to unassigned so you can start fresh. Player names, handicaps and tees stay as they are — no need to re-enter the roster. The Hole Handicaps table also stays as-is (only re-enter it if you're changing courses).</p>
+        <button style="background:#c0392b; color:#fff;" onclick="startNewSeason()">Start New Season…</button>
+        <div id="newSeasonStatus" class="status"></div>
       </div>
     </section>
 
@@ -192,6 +200,20 @@
       </div>
     </section>
 
+    <!-- HOLE HANDICAPS -->
+    <section id="tab-holehc" class="tab-panel" hidden>
+      <div class="card">
+        <h2>Hole Handicaps</h2>
+        <p class="hint">Stroke Index ranks each hole 1 (hardest) to 18 (easiest) — this is what Day 2's Live Scoring page uses to work out net scores from each player's Handicap Index on the Roster tab. Par is optional, just for reference. This only needs to be set once per course/tee setup.</p>
+        <table>
+          <thead><tr><th style="width:80px;">Hole</th><th>Stroke Index (1–18, each used once)</th><th style="width:120px;">Par</th></tr></thead>
+          <tbody id="holeHcBody"></tbody>
+        </table>
+        <button class="primary" onclick="saveHoleHandicaps()" style="margin-top:16px;">Save Hole Handicaps</button>
+        <div id="holeHcStatus" class="status"></div>
+      </div>
+    </section>
+
   </main>
 </div>
 
@@ -202,7 +224,7 @@
 // touching real tournament data, same pattern as the tee sheet app.
 const CONFIG = {
   test: { backendUrl: 'https://script.google.com/macros/s/AKfycbzw4xeOOwP09RCrILvt5P9iT9S8mpJXLzggO7NrzvEQy-bR-Qtn1-1tEfbEzeRTpQ/exec', key: '8O`I!r5]Hx26' },
-  live: { backendUrl: 'PASTE_LIVE_WEB_APP_URL_HERE', key: 'PASTE_LIVE_SECRET_KEY_HERE' },
+  live: { backendUrl: 'https://script.google.com/macros/s/AKfycbxsxCCuBXz-mbDUlVlxL-_V4YtuWqlEl0Q3J4L_z4sN6aiYkB1PvZlHDNLOS4Lh8Wbb/exec', key: '&wW3d@j>3£56' },
 };
 const ADMIN_PIN = '1234'; // change this before you publish the repo
 
@@ -269,10 +291,11 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 // ====================== STATE ======================
 let roster = [];       // [{PlayerID, Name, Team, HandicapIndex, Tee, Active}]
 let settings = {};
+let holeHandicaps = []; // [{Hole, StrokeIndex, Par}] x18
 
 // ====================== INIT ======================
 async function init() {
-  const [settingsRes, rosterRes] = await Promise.all([apiGet('getSettings'), apiGet('getRoster')]);
+  const [settingsRes, rosterRes, hcRes] = await Promise.all([apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps')]);
   if (settingsRes.success) {
     settings = settingsRes.data;
     populateSettingsForm();
@@ -281,7 +304,61 @@ async function init() {
     roster = rosterRes.data;
     renderRoster();
   }
+  if (hcRes.success) {
+    holeHandicaps = hcRes.data.length ? hcRes.data : defaultHoleHandicapRows();
+    renderHoleHandicaps();
+  }
   await Promise.all([loadPairings('1'), loadPairings('2')]);
+}
+
+// ====================== HOLE HANDICAPS TAB ======================
+function defaultHoleHandicapRows() {
+  const rows = [];
+  for (let h = 1; h <= 18; h++) rows.push({ Hole: h, StrokeIndex: '', Par: '' });
+  return rows;
+}
+
+function renderHoleHandicaps() {
+  const body = document.getElementById('holeHcBody');
+  body.innerHTML = '';
+  holeHandicaps.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="match-label">Hole ${row.Hole}${row.Hole == 9 || row.Hole == 18 ? ' <span class="hint">(' + (row.Hole == 9 ? 'end of front 9' : 'end of back 9') + ')</span>' : ''}</td>
+      <td><input type="number" min="1" max="18" value="${row.StrokeIndex}" data-idx="${idx}" data-field="StrokeIndex" style="width:100px;"></td>
+      <td><input type="number" min="3" max="6" value="${row.Par || ''}" data-idx="${idx}" data-field="Par" style="width:80px;"></td>
+    `;
+    tr.querySelectorAll('input').forEach((el) => {
+      el.addEventListener('change', (e) => {
+        holeHandicaps[idx][e.target.dataset.field] = e.target.value;
+      });
+    });
+    body.appendChild(tr);
+  });
+}
+
+async function saveHoleHandicaps() {
+  const indices = holeHandicaps.map((r) => String(r.StrokeIndex)).filter((v) => v !== '');
+  const seen = {};
+  let dup = null;
+  indices.forEach((v) => { if (seen[v]) dup = v; seen[v] = true; });
+  if (dup) {
+    showStatus('holeHcStatus', false, `Stroke Index ${dup} is used more than once — each hole needs a unique value 1–18.`);
+    return;
+  }
+  try {
+    const res = await apiPost('saveHoleHandicaps', { holeHandicaps: JSON.stringify(holeHandicaps) });
+    if (res.success) {
+      holeHandicaps = res.data;
+      renderHoleHandicaps();
+      const filled = holeHandicaps.filter((r) => r.StrokeIndex !== '' && r.StrokeIndex != null).length;
+      showStatus('holeHcStatus', true, filled === 18 ? 'Saved — all 18 holes set.' : `Saved (${filled} of 18 holes set so far).`);
+    } else {
+      showStatus('holeHcStatus', false, res.error);
+    }
+  } catch (err) {
+    showStatus('holeHcStatus', false, 'Network error: ' + err.message);
+  }
 }
 
 // ====================== SETTINGS TAB ======================
@@ -321,11 +398,47 @@ async function saveSettings() {
   }
 }
 
+async function startNewSeason() {
+  const defaultLabel = new Date().getFullYear().toString();
+  const label = prompt(
+    'Label for this season\'s archive (letters/numbers only, e.g. a year):',
+    defaultLabel
+  );
+  if (label === null) return; // cancelled
+
+  const confirmed = confirm(
+    'This will:\n\n' +
+    '- Save a copy of this year\'s settings, roster, pairings and scores as hidden “Archive_' + (label || defaultLabel) + '_...” tabs in the Google Sheet\n' +
+    '- Clear all 9 Day 1 and Day 2 pairings back to blank\n' +
+    '- Clear all entered scores\n' +
+    '- Reset every player’s team assignment back to unassigned\n' +
+    '- Reset the tournament dates and Team A/B names/captains back to defaults\n\n' +
+    'Player names/handicaps/tees and the Hole Handicaps table are kept as-is.\n\n' +
+    'This cannot be undone from here (though the archived tabs keep everything). Continue?'
+  );
+  if (!confirmed) return;
+
+  try {
+    showStatus('newSeasonStatus', true, 'Archiving and resetting…');
+    const res = await apiPost('startNewSeason', { archiveLabel: label || defaultLabel });
+    if (res.success) {
+      showStatus('newSeasonStatus', true, 'Done — archived as "' + res.data.archived + '". Reloading…');
+      await init();
+      showStatus('newSeasonStatus', true, 'New season started. Everything below has been reset.');
+    } else {
+      showStatus('newSeasonStatus', false, res.error);
+    }
+  } catch (err) {
+    showStatus('newSeasonStatus', false, 'Network error: ' + err.message);
+  }
+}
+
 function refreshPairingHeaders() {
   document.getElementById('day1TeamAHeader').textContent = settings.TeamAName || 'Team A';
   document.getElementById('day1TeamBHeader').textContent = settings.TeamBName || 'Team B';
   document.getElementById('day2TeamAHeader').textContent = settings.TeamAName || 'Team A';
   document.getElementById('day2TeamBHeader').textContent = settings.TeamBName || 'Team B';
+  if (roster.length) renderRoster(); // refresh the captain-name labels in the Team dropdown
 }
 
 // ====================== ROSTER TAB ======================
@@ -335,14 +448,28 @@ function renderRoster() {
   roster.forEach((p, idx) => body.appendChild(rosterRowEl(p, idx)));
 }
 
+function teamLabel(key) {
+  if (key === 'A') {
+    const cap = settings.TeamACaptain;
+    return cap && cap !== 'TBD' ? `${settings.TeamAName || 'Team A'} — ${cap}` : (settings.TeamAName || 'Team A');
+  }
+  if (key === 'B') {
+    const cap = settings.TeamBCaptain;
+    return cap && cap !== 'TBD' ? `${settings.TeamBName || 'Team B'} — ${cap}` : (settings.TeamBName || 'Team B');
+  }
+  return key;
+}
+
 function rosterRowEl(p, idx) {
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td><input type="text" value="${escapeAttr(p.Name || '')}" data-field="Name" data-idx="${idx}"></td>
     <td>
       <select data-field="Team" data-idx="${idx}">
-        <option value="A" ${p.Team === 'A' ? 'selected' : ''}>A</option>
-        <option value="B" ${p.Team === 'B' ? 'selected' : ''}>B</option>
+        <option value="" ${!p.Team ? 'selected' : ''}>— Unassigned —</option>
+        <option value="A" ${p.Team === 'A' ? 'selected' : ''}>${escapeHtml(teamLabel('A'))}</option>
+        <option value="B" ${p.Team === 'B' ? 'selected' : ''}>${escapeHtml(teamLabel('B'))}</option>
+        <option value="NOT_PLAYING" ${p.Team === 'NOT_PLAYING' ? 'selected' : ''}>Not participating</option>
       </select>
     </td>
     <td><input type="number" step="0.1" value="${p.HandicapIndex || ''}" data-field="HandicapIndex" data-idx="${idx}"></td>
@@ -358,7 +485,7 @@ function rosterRowEl(p, idx) {
 }
 
 function addRosterRow() {
-  roster.push({ PlayerID: '', Name: '', Team: 'A', HandicapIndex: '', Tee: '', Active: true });
+  roster.push({ PlayerID: '', Name: '', Team: '', HandicapIndex: '', Tee: '', Active: true });
   renderRoster();
 }
 function removeRosterRow(idx) {
