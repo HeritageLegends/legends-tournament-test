@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heritage Legends Tournament — Admin</title>
+<style>
+  :root {
+    --green: #1e5b3a;
+    --green-dark: #123c26;
+    --gold: #c9a227;
+    --bg: #f5f5f0;
+    --card: #ffffff;
+    --border: #d8d8d0;
+    --text: #222;
+    --muted: #777;
+    --error: #b3261e;
+    --ok: #1e5b3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header {
+    background: var(--green); color: #fff; padding: 18px 24px;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  header h1 { margin: 0; font-size: 1.25rem; }
+  header .sub { font-size: 0.85rem; opacity: 0.85; }
+  nav { display: flex; gap: 4px; padding: 0 24px; background: var(--green-dark); flex-wrap: wrap; }
+  nav button {
+    background: transparent; border: none; color: #fff; opacity: 0.75; padding: 12px 16px;
+    cursor: pointer; font-size: 0.95rem; border-bottom: 3px solid transparent;
+  }
+  nav button.active { opacity: 1; border-bottom-color: var(--gold); font-weight: 600; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .card h2 { margin-top: 0; font-size: 1.05rem; color: var(--green-dark); }
+  .field-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+  .field { flex: 1; min-width: 200px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=number], input[type=date], select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+  tr.match-row td { vertical-align: top; padding-top: 10px; }
+  .match-label { font-weight: 600; color: var(--green-dark); white-space: nowrap; }
+  button.primary {
+    background: var(--green); color: #fff; border: none; padding: 10px 18px; border-radius: 6px;
+    cursor: pointer; font-size: 0.9rem; font-weight: 600;
+  }
+  button.primary:hover { background: var(--green-dark); }
+  button.secondary {
+    background: #fff; color: var(--green); border: 1px solid var(--green); padding: 8px 14px;
+    border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+  }
+  button.link { background: none; border: none; color: var(--error); cursor: pointer; font-size: 0.85rem; }
+  .status { margin-top: 10px; font-size: 0.9rem; min-height: 20px; }
+  .status.ok { color: var(--ok); }
+  .status.error { color: var(--error); }
+  .hint { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+  .gate {
+    max-width: 360px; margin: 80px auto; text-align: center; background: var(--card);
+    border: 1px solid var(--border); border-radius: 10px; padding: 32px;
+  }
+  .gate input { text-align: center; font-size: 1.2rem; letter-spacing: 2px; }
+  [hidden] { display: none !important; }
+  .roster-team-col { width: 110px; }
+  .placeholder-badge {
+    display: inline-block; background: #fff3cd; color: #7a5b00; border-radius: 4px;
+    padding: 2px 8px; font-size: 0.75rem; margin-left: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div id="gate" class="gate">
+  <h2>Legends Tournament Admin</h2>
+  <p class="hint">Enter the admin PIN to set up teams and pairings.</p>
+  <input id="pinInput" type="text" inputmode="numeric" placeholder="PIN" autofocus>
+  <div style="margin-top:16px;"><button class="primary" onclick="checkPin()">Enter</button></div>
+  <div id="gateStatus" class="status error"></div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <div>
+      <h1 id="tournamentTitle">Heritage Legends Tournament</h1>
+      <div class="sub" id="tournamentSub">Admin — Team &amp; Pairing Setup</div>
+    </div>
+    <div class="sub" id="envBadge"></div>
+  </header>
+  <nav>
+    <button class="tab-btn active" data-tab="settings">Settings</button>
+    <button class="tab-btn" data-tab="roster">Roster</button>
+    <button class="tab-btn" data-tab="day1">Day 1 Pairings</button>
+    <button class="tab-btn" data-tab="day2">Day 2 Pairings</button>
+  </nav>
+
+  <main>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab-panel">
+      <div class="card">
+        <h2>Tournament Settings</h2>
+        <div class="field-row">
+          <div class="field"><label>Tournament Name</label><input id="s_TournamentName" type="text"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Day 1 Date</label><input id="s_Day1Date" type="date"></div>
+          <div class="field"><label>Day 2 Date</label><input id="s_Day2Date" type="date"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Team A Name <span class="hint">(placeholder until captains decide)</span></label><input id="s_TeamAName" type="text"></div>
+          <div class="field"><label>Team A Captain</label><input id="s_TeamACaptain" type="text"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Team B Name <span class="hint">(placeholder until captains decide)</span></label><input id="s_TeamBName" type="text"></div>
+          <div class="field"><label>Team B Captain</label><input id="s_TeamBCaptain" type="text"></div>
+        </div>
+        <button class="primary" onclick="saveSettings()">Save Settings</button>
+        <div id="settingsStatus" class="status"></div>
+      </div>
+    </section>
+
+    <!-- ROSTER -->
+    <section id="tab-roster" class="tab-panel" hidden>
+      <div class="card">
+        <h2>Roster</h2>
+        <p class="hint">Add every player and which team they're on. Handicap Index and Tee are used for Day 2 net scoring (added in a later stage) — fill them in whenever you have them, they're not required to set up pairings.</p>
+        <table id="rosterTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th class="roster-team-col">Team</th>
+              <th>Handicap Index</th>
+              <th>Tee</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+        <div style="margin-top:12px;">
+          <button class="secondary" onclick="addRosterRow()">+ Add Player</button>
+        </div>
+        <div style="margin-top:16px;">
+          <button class="primary" onclick="saveRoster()">Save Roster</button>
+        </div>
+        <div id="rosterStatus" class="status"></div>
+      </div>
+    </section>
+
+    <!-- DAY 1 PAIRINGS -->
+    <section id="tab-day1" class="tab-panel" hidden>
+      <div class="card">
+        <h2>Day 1 Pairings <span class="placeholder-badge">Front 9: Captain's Choice · Back 9: Mod. Alt Shot</span></h2>
+        <p class="hint">Each match is 2 players per team. Use placeholder matchups now — everything here is editable later once captains set real pairings.</p>
+        <table>
+          <thead>
+            <tr><th></th><th colspan="2" id="day1TeamAHeader">Team A</th><th colspan="2" id="day1TeamBHeader">Team B</th><th>Start Hole</th><th>Tee</th></tr>
+          </thead>
+          <tbody id="day1Body"></tbody>
+        </table>
+        <div style="margin-top:16px;">
+          <button class="primary" onclick="savePairings('1')">Save Day 1 Pairings</button>
+        </div>
+        <div id="day1Status" class="status"></div>
+      </div>
+    </section>
+
+    <!-- DAY 2 PAIRINGS -->
+    <section id="tab-day2" class="tab-panel" hidden>
+      <div class="card">
+        <h2>Day 2 Pairings <span class="placeholder-badge">Front 9: Best Ball · Back 9: Individual Match Play</span></h2>
+        <p class="hint">Best Ball uses the same 2-vs-2 foursome as the match below. For the back-nine Individual Match Play, pick which player from each team faces which — defaults to Player 1 vs Player 1 and Player 2 vs Player 2.</p>
+        <table>
+          <thead>
+            <tr><th></th><th colspan="2" id="day2TeamAHeader">Team A</th><th colspan="2" id="day2TeamBHeader">Team B</th><th>Tee</th></tr>
+          </thead>
+          <tbody id="day2Body"></tbody>
+        </table>
+        <div style="margin-top:16px;">
+          <button class="primary" onclick="savePairings('2')">Save Day 2 Pairings</button>
+        </div>
+        <div id="day2Status" class="status"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// ====================== CONFIG ======================
+// Fill these in after you deploy Code.gs as a Web App (see setup notes at
+// the top of Code.gs). Keeping test/live separate lets you rehearse without
+// touching real tournament data, same pattern as the tee sheet app.
+const CONFIG = {
+  test: { backendUrl: 'https://script.google.com/macros/s/AKfycbzw4xeOOwP09RCrILvt5P9iT9S8mpJXLzggO7NrzvEQy-bR-Qtn1-1tEfbEzeRTpQ/exec', key: '8O`I!r5]Hx26' },
+  live: { backendUrl: 'PASTE_LIVE_WEB_APP_URL_HERE', key: 'PASTE_LIVE_SECRET_KEY_HERE' },
+};
+const ADMIN_PIN = '1234'; // change this before you publish the repo
+
+// Environment detection: an explicit ?env=test or ?env=live in the URL always
+// wins (use this while testing the raw local file, e.g. index.html?env=test).
+// Otherwise, once this is deployed to two separate GitHub Pages URLs, it falls
+// back to checking whether "test" appears in the page's own URL.
+const envParam = new URLSearchParams(location.search).get('env');
+const ENV = (envParam === 'test' || envParam === 'live')
+  ? envParam
+  : (location.href.toLowerCase().includes('test') ? 'test' : 'live');
+const CFG = CONFIG[ENV];
+const CFG_IS_PLACEHOLDER = !CFG.backendUrl || CFG.backendUrl.startsWith('PASTE_');
+
+// ====================== GATE ======================
+function checkPin() {
+  const val = document.getElementById('pinInput').value.trim();
+  if (val !== ADMIN_PIN) {
+    document.getElementById('gateStatus').textContent = 'Incorrect PIN.';
+    return;
+  }
+  if (CFG_IS_PLACEHOLDER) {
+    document.getElementById('gateStatus').textContent =
+      `No backend URL/key is set for "${ENV}" yet — edit the CONFIG block near the top of the <script> tag in this file. ` +
+      `(Add ?env=test or ?env=live to this page's URL to pick which one you're testing.)`;
+    return;
+  }
+  document.getElementById('gate').hidden = true;
+  document.getElementById('app').hidden = false;
+  document.getElementById('envBadge').textContent = ENV.toUpperCase();
+  init();
+}
+document.getElementById('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') checkPin(); });
+
+// ====================== API HELPERS ======================
+async function apiGet(action, extra) {
+  const params = new URLSearchParams(Object.assign({ action, key: CFG.key }, extra || {}));
+  const res = await fetch(CFG.backendUrl + '?' + params.toString());
+  return res.json();
+}
+async function apiPost(action, body) {
+  const res = await fetch(CFG.backendUrl, {
+    method: 'POST',
+    body: JSON.stringify(Object.assign({ action, key: CFG.key }, body || {})),
+  });
+  return res.json();
+}
+function showStatus(elId, ok, msg) {
+  const el = document.getElementById(elId);
+  el.textContent = msg;
+  el.className = 'status ' + (ok ? 'ok' : 'error');
+}
+
+// ====================== TABS ======================
+document.querySelectorAll('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach((p) => (p.hidden = true));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).hidden = false;
+  });
+});
+
+// ====================== STATE ======================
+let roster = [];       // [{PlayerID, Name, Team, HandicapIndex, Tee, Active}]
+let settings = {};
+
+// ====================== INIT ======================
+async function init() {
+  const [settingsRes, rosterRes] = await Promise.all([apiGet('getSettings'), apiGet('getRoster')]);
+  if (settingsRes.success) {
+    settings = settingsRes.data;
+    populateSettingsForm();
+  }
+  if (rosterRes.success) {
+    roster = rosterRes.data;
+    renderRoster();
+  }
+  await Promise.all([loadPairings('1'), loadPairings('2')]);
+}
+
+// ====================== SETTINGS TAB ======================
+function populateSettingsForm() {
+  document.getElementById('s_TournamentName').value = settings.TournamentName || '';
+  document.getElementById('s_Day1Date').value = settings.Day1Date || '';
+  document.getElementById('s_Day2Date').value = settings.Day2Date || '';
+  document.getElementById('s_TeamAName').value = settings.TeamAName || 'Team A';
+  document.getElementById('s_TeamACaptain').value = settings.TeamACaptain || '';
+  document.getElementById('s_TeamBName').value = settings.TeamBName || 'Team B';
+  document.getElementById('s_TeamBCaptain').value = settings.TeamBCaptain || '';
+  document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament';
+  refreshPairingHeaders();
+}
+
+async function saveSettings() {
+  const newSettings = {
+    TournamentName: document.getElementById('s_TournamentName').value,
+    Day1Date: document.getElementById('s_Day1Date').value,
+    Day2Date: document.getElementById('s_Day2Date').value,
+    TeamAName: document.getElementById('s_TeamAName').value || 'Team A',
+    TeamACaptain: document.getElementById('s_TeamACaptain').value,
+    TeamBName: document.getElementById('s_TeamBName').value || 'Team B',
+    TeamBCaptain: document.getElementById('s_TeamBCaptain').value,
+  };
+  try {
+    const res = await apiPost('saveSettings', { settings: JSON.stringify(newSettings) });
+    if (res.success) {
+      settings = res.data;
+      populateSettingsForm();
+      showStatus('settingsStatus', true, 'Saved.');
+    } else {
+      showStatus('settingsStatus', false, res.error);
+    }
+  } catch (err) {
+    showStatus('settingsStatus', false, 'Network error: ' + err.message);
+  }
+}
+
+function refreshPairingHeaders() {
+  document.getElementById('day1TeamAHeader').textContent = settings.TeamAName || 'Team A';
+  document.getElementById('day1TeamBHeader').textContent = settings.TeamBName || 'Team B';
+  document.getElementById('day2TeamAHeader').textContent = settings.TeamAName || 'Team A';
+  document.getElementById('day2TeamBHeader').textContent = settings.TeamBName || 'Team B';
+}
+
+// ====================== ROSTER TAB ======================
+function renderRoster() {
+  const body = document.getElementById('rosterBody');
+  body.innerHTML = '';
+  roster.forEach((p, idx) => body.appendChild(rosterRowEl(p, idx)));
+}
+
+function rosterRowEl(p, idx) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" value="${escapeAttr(p.Name || '')}" data-field="Name" data-idx="${idx}"></td>
+    <td>
+      <select data-field="Team" data-idx="${idx}">
+        <option value="A" ${p.Team === 'A' ? 'selected' : ''}>A</option>
+        <option value="B" ${p.Team === 'B' ? 'selected' : ''}>B</option>
+      </select>
+    </td>
+    <td><input type="number" step="0.1" value="${p.HandicapIndex || ''}" data-field="HandicapIndex" data-idx="${idx}"></td>
+    <td><input type="text" value="${escapeAttr(p.Tee || '')}" data-field="Tee" data-idx="${idx}"></td>
+    <td><button class="link" onclick="removeRosterRow(${idx})">Remove</button></td>
+  `;
+  tr.querySelectorAll('input, select').forEach((el) => {
+    el.addEventListener('change', (e) => {
+      roster[idx][e.target.dataset.field] = e.target.value;
+    });
+  });
+  return tr;
+}
+
+function addRosterRow() {
+  roster.push({ PlayerID: '', Name: '', Team: 'A', HandicapIndex: '', Tee: '', Active: true });
+  renderRoster();
+}
+function removeRosterRow(idx) {
+  roster.splice(idx, 1);
+  renderRoster();
+}
+
+async function saveRoster() {
+  try {
+    const res = await apiPost('saveRoster', { roster: JSON.stringify(roster) });
+    if (res.success) {
+      roster = res.data;
+      renderRoster();
+      showStatus('rosterStatus', true, `Saved ${roster.length} players.`);
+      refreshPairingDropdownSources();
+    } else {
+      showStatus('rosterStatus', false, res.error);
+    }
+  } catch (err) {
+    showStatus('rosterStatus', false, 'Network error: ' + err.message);
+  }
+}
+
+function rosterNamesForTeam(team) {
+  return roster.filter((p) => p.Team === team && p.Name).map((p) => p.Name);
+}
+
+// ====================== PAIRINGS (shared logic for Day 1 & 2) ======================
+let pairings = { 1: [], 2: [] };
+
+function playerSelect(selectedName, team, dataAttrs) {
+  const names = rosterNamesForTeam(team);
+  const opts = ['<option value="">— select —</option>']
+    .concat(names.map((n) => `<option value="${escapeAttr(n)}" ${n === selectedName ? 'selected' : ''}>${escapeHtml(n)}</option>`));
+  return `<select ${dataAttrs}>${opts.join('')}</select>`;
+}
+
+async function loadPairings(day) {
+  const res = await apiGet('getPairings', { day });
+  if (res.success) {
+    pairings[day] = res.data.length ? res.data : defaultPairingRows(day);
+  } else {
+    pairings[day] = defaultPairingRows(day);
+  }
+  renderPairings(day);
+}
+
+function defaultPairingRows(day) {
+  const rows = [];
+  for (let m = 1; m <= 9; m++) {
+    if (day === '2' || day === 2) {
+      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', Tee: '', MP1_TeamA: '', MP1_TeamB: '', MP2_TeamA: '', MP2_TeamB: '', MPSwapped: false });
+    } else {
+      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '', Tee: '' });
+    }
+  }
+  return rows;
+}
+
+function renderPairings(day) {
+  const body = document.getElementById(day === '2' ? 'day2Body' : 'day1Body');
+  body.innerHTML = '';
+  if (day === '2' || day === 2) {
+    pairings[day].forEach((row) => { if (!row.MP1_TeamA && !isSwapped(row)) syncMatchPlayPairing(row); });
+  }
+  pairings[day].forEach((row, idx) => body.appendChild(pairingRowEl(day, row, idx)));
+}
+
+function pairingRowEl(day, row, idx) {
+  const tr = document.createElement('tr');
+  tr.className = 'match-row';
+  const base = `data-day="${day}" data-idx="${idx}"`;
+  const isDay2 = day === '2' || day === 2;
+
+  tr.innerHTML = `
+    <td class="match-label">Match ${row.MatchNum}</td>
+    <td>${playerSelect(row.TeamA_P1, 'A', `${base} data-field="TeamA_P1"`)}</td>
+    <td>${playerSelect(row.TeamA_P2, 'A', `${base} data-field="TeamA_P2"`)}</td>
+    <td>${playerSelect(row.TeamB_P1, 'B', `${base} data-field="TeamB_P1"`)}</td>
+    <td>${playerSelect(row.TeamB_P2, 'B', `${base} data-field="TeamB_P2"`)}</td>
+    ${isDay2
+      ? `<td><input type="text" value="${escapeAttr(row.Tee || '')}" ${base} data-field="Tee" style="width:80px;"></td>`
+      : `<td><input type="number" value="${row.StartHole || ''}" ${base} data-field="StartHole" style="width:70px;"></td>
+         <td><input type="text" value="${escapeAttr(row.Tee || '')}" ${base} data-field="Tee" style="width:80px;"></td>`
+    }
+  `;
+  tr.querySelectorAll('select, input').forEach((el) => {
+    if (!el.dataset.field) return;
+    el.addEventListener('change', (e) => {
+      pairings[day][idx][e.target.dataset.field] = e.target.value;
+      if (isDay2 && ['TeamA_P1', 'TeamA_P2', 'TeamB_P1', 'TeamB_P2'].includes(e.target.dataset.field)) {
+        // keep the match-play pairing in sync with the foursome unless the admin swapped it
+        syncMatchPlayPairing(pairings[day][idx]);
+        renderPairings(day); // refresh the "vs" line below the row
+      }
+    });
+  });
+
+  if (isDay2) {
+    const mpRow = document.createElement('tr');
+    mpRow.innerHTML = `
+      <td></td>
+      <td colspan="4" class="hint">
+        Individual Match Play: <strong>${escapeHtml(row.MP1_TeamA || '?')}</strong> vs <strong>${escapeHtml(row.MP1_TeamB || '?')}</strong>,
+        <strong>${escapeHtml(row.MP2_TeamA || '?')}</strong> vs <strong>${escapeHtml(row.MP2_TeamB || '?')}</strong>
+        &nbsp;<button class="link" style="color:var(--green);" data-swap-idx="${idx}">swap opponents</button>
+      </td>
+      <td></td>
+    `;
+    mpRow.querySelector('[data-swap-idx]').addEventListener('click', () => {
+      const r = pairings[day][idx];
+      const tmp = r.MP1_TeamB;
+      r.MP1_TeamB = r.MP2_TeamB;
+      r.MP2_TeamB = tmp;
+      r.MPSwapped = true;
+      renderPairings(day);
+    });
+    const frag = document.createDocumentFragment();
+    frag.appendChild(tr);
+    frag.appendChild(mpRow);
+    return frag;
+  }
+
+  return tr;
+}
+
+function isSwapped(r) {
+  return r.MPSwapped === true || r.MPSwapped === 'TRUE' || r.MPSwapped === 'true';
+}
+function syncMatchPlayPairing(r) {
+  if (isSwapped(r)) { r.MP1_TeamA = r.TeamA_P1; r.MP2_TeamA = r.TeamA_P2; return; }
+  r.MP1_TeamA = r.TeamA_P1; r.MP1_TeamB = r.TeamB_P1;
+  r.MP2_TeamA = r.TeamA_P2; r.MP2_TeamB = r.TeamB_P2;
+}
+
+function refreshPairingDropdownSources() {
+  renderPairings('1');
+  renderPairings('2');
+}
+
+async function savePairings(day) {
+  const statusId = day === '2' ? 'day2Status' : 'day1Status';
+  // basic validation: no player used twice on the same day
+  const used = {};
+  let dup = null;
+  pairings[day].forEach((row) => {
+    ['TeamA_P1', 'TeamA_P2', 'TeamB_P1', 'TeamB_P2'].forEach((f) => {
+      const name = row[f];
+      if (!name) return;
+      if (used[name]) dup = name;
+      used[name] = true;
+    });
+  });
+  if (dup) {
+    showStatus(statusId, false, `"${dup}" is assigned to more than one match — each player should appear once per day.`);
+    return;
+  }
+  try {
+    const res = await apiPost('savePairings', { day, pairings: JSON.stringify(pairings[day]) });
+    if (res.success) {
+      pairings[day] = res.data;
+      renderPairings(day);
+      showStatus(statusId, true, 'Saved.');
+    } else {
+      showStatus(statusId, false, res.error);
+    }
+  } catch (err) {
+    showStatus(statusId, false, 'Network error: ' + err.message);
+  }
+}
+
+// ====================== UTIL ======================
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function escapeAttr(str) { return escapeHtml(str); }
+</script>
+</body>
+</html>
