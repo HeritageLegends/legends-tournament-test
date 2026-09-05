@@ -137,6 +137,16 @@
         <div id="settingsStatus" class="status"></div>
       </div>
 
+      <div class="card">
+        <h2>Admin PIN</h2>
+        <p class="hint">This is the PIN this page asks for on the gate screen you just got past. Changing it here updates it for anyone using this link — test and live can have different PINs, since each has its own PIN stored in its own Google Sheet.</p>
+        <div class="field-row">
+          <div class="field" style="max-width:200px;"><label>New PIN</label><input id="s_AdminPIN" type="text" inputmode="numeric" placeholder="e.g. 1234"></div>
+        </div>
+        <button class="primary" onclick="saveAdminPin()">Change PIN</button>
+        <div id="adminPinStatus" class="status"></div>
+      </div>
+
       <div class="card" style="border: 1px solid #c0392b;">
         <h2 style="color:#c0392b;">Start New Season</h2>
         <p class="hint">Once this year's tournament is over and you're ready to set up next year's: this archives everything from this season (settings, roster, pairings, scores) into hidden backup tabs in the Google Sheet, then clears pairings and scores and resets every player's team back to unassigned so you can start fresh. Player names, handicaps and tees stay as they are — no need to re-enter the roster. The Hole Handicaps table also stays as-is (only re-enter it if you're changing courses).</p>
@@ -229,23 +239,27 @@
     <!-- PRINT SCORECARDS -->
     <section id="tab-print" class="tab-panel" hidden>
       <div class="card">
-        <h2>Print Blank Scorecards <span class="placeholder-badge">Day 2 only</span></h2>
+        <h2>Print Blank Scorecards</h2>
         <p class="hint">
           For players who'd rather write scores by hand than use Live Scoring on a phone. Prints one
-          paper scorecard per match with the tournament name, date, tee, hole-by-hole Stroke Index
-          (and Par, if you've entered it), and each player's handicap strokes marked as dots on the
-          holes they apply to — so they can write in gross scores and circle the ones where a stroke
-          counts. Day 1 isn't offered here since it's one team score per hole, not per player, and
-          doesn't use handicaps.
+          paper scorecard per match with the tournament name, date, tee, and hole numbers.
+          <strong>Day 2</strong> also shows the Stroke Index and each player's handicap strokes marked
+          as dots on the holes they apply to. <strong>Day 1</strong> is one row per team instead of per
+          player, since Captain's Choice and Modified Alternate Shot are both one combined score per
+          team per hole — no handicap strokes apply, so there's no Hcp row or dots for that day.
         </p>
         <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <select id="printDaySelect" onchange="populatePrintMatchSelect()">
+            <option value="2" selected>Day 2</option>
+            <option value="1">Day 1</option>
+          </select>
           <select id="printMatchSelect"></select>
           <button class="primary" onclick="printScorecards()">Print</button>
           <button class="secondary" onclick="printSampleScorecard()">Preview Sample Scorecard</button>
         </div>
-        <p class="hint">Haven't set Day 2 pairings yet? "Preview Sample Scorecard" shows the layout with
-          made-up players so you can check it over (and see your Hole Handicaps table reflected in it)
-          before real teams are assembled.</p>
+        <p class="hint">Haven't set that day's pairings yet? "Preview Sample Scorecard" shows the layout
+          with made-up players so you can check it over (and see your Hole Handicaps table reflected in
+          it, for Day 2) before real teams are assembled.</p>
         <div id="printStatus" class="status"></div>
       </div>
     </section>
@@ -262,13 +276,11 @@ const CONFIG = {
   test: { backendUrl: 'https://script.google.com/macros/s/AKfycbzw4xeOOwP09RCrILvt5P9iT9S8mpJXLzggO7NrzvEQy-bR-Qtn1-1tEfbEzeRTpQ/exec', key: '8O`I!r5]Hx26' },
   live: { backendUrl: 'https://script.google.com/macros/s/AKfycbxsxCCuBXz-mbDUlVlxL-_V4YtuWqlEl0Q3J4L_z4sN6aiYkB1PvZlHDNLOS4Lh8Wbb/exec', key: '&wW3d@j>3£56' },
 };
-const ADMIN_PIN = '1234'; // change this before you publish the repo
-
 // Bumped by hand every time this file changes — shown in the header next to
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-05g';
+const ADMIN_VERSION = '2026-09-05i';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -282,16 +294,33 @@ const CFG = CONFIG[ENV];
 const CFG_IS_PLACEHOLDER = !CFG.backendUrl || CFG.backendUrl.startsWith('PASTE_');
 
 // ====================== GATE ======================
-function checkPin() {
-  const val = document.getElementById('pinInput').value.trim();
-  if (val !== ADMIN_PIN) {
-    document.getElementById('gateStatus').textContent = 'Incorrect PIN.';
-    return;
-  }
+// The admin PIN lives in the Settings sheet (AdminPIN) rather than hardcoded
+// here, so it can be changed from the Settings tab (see saveAdminPin below)
+// without editing this file. Defaults to '1234' the first time the backend
+// creates that row — change it once you're set up.
+async function checkPin() {
   if (CFG_IS_PLACEHOLDER) {
     document.getElementById('gateStatus').textContent =
       `No backend URL/key is set for "${ENV}" yet — edit the CONFIG block near the top of the <script> tag in this file. ` +
       `(Add ?env=test or ?env=live to this page's URL to pick which one you're testing.)`;
+    return;
+  }
+  const val = document.getElementById('pinInput').value.trim();
+  document.getElementById('gateStatus').textContent = '';
+  let res;
+  try {
+    res = await apiGet('getSettings');
+  } catch (err) {
+    document.getElementById('gateStatus').textContent = 'Network error checking PIN: ' + err.message;
+    return;
+  }
+  if (!res.success) {
+    document.getElementById('gateStatus').textContent = res.error || 'Could not check PIN.';
+    return;
+  }
+  settings = res.data; // reuse this fetch — init() below won't need to re-fetch it
+  if (val !== String(settings.AdminPIN || '1234')) {
+    document.getElementById('gateStatus').textContent = 'Incorrect PIN.';
     return;
   }
   document.getElementById('gate').hidden = true;
@@ -427,6 +456,7 @@ function populateSettingsForm() {
   document.getElementById('s_TeamACaptain').value = settings.TeamACaptain || '';
   document.getElementById('s_TeamBName').value = settings.TeamBName || 'Team B';
   document.getElementById('s_TeamBCaptain').value = settings.TeamBCaptain || '';
+  document.getElementById('s_AdminPIN').value = settings.AdminPIN || '';
   document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament';
   refreshPairingHeaders();
 }
@@ -452,6 +482,28 @@ async function saveSettings() {
     }
   } catch (err) {
     showStatus('settingsStatus', false, 'Network error: ' + err.message);
+  }
+}
+
+async function saveAdminPin() {
+  const newPin = document.getElementById('s_AdminPIN').value.trim();
+  if (!newPin) {
+    showStatus('adminPinStatus', false, 'Enter a PIN before saving.');
+    return;
+  }
+  try {
+    // Only AdminPIN is included, so this leaves every other setting untouched —
+    // saveSettings_ on the backend only writes keys it's given.
+    const res = await apiPost('saveSettings', { settings: JSON.stringify({ AdminPIN: newPin }) });
+    if (res.success) {
+      settings = res.data;
+      populateSettingsForm();
+      showStatus('adminPinStatus', true, 'PIN changed — use the new one next time you (or anyone else) load this page.');
+    } else {
+      showStatus('adminPinStatus', false, res.error);
+    }
+  } catch (err) {
+    showStatus('adminPinStatus', false, 'Network error: ' + err.message);
   }
 }
 
@@ -589,7 +641,7 @@ async function loadPairings(day) {
     pairings[day] = defaultPairingRows(day);
   }
   renderPairings(day);
-  if (day === '2' || day === 2) populatePrintMatchSelect();
+  populatePrintMatchSelect();
 }
 
 function defaultPairingRows(day) {
@@ -725,7 +777,7 @@ async function savePairings(day) {
     if (res.success) {
       pairings[day] = res.data;
       renderPairings(day);
-      if (day === '2' || day === 2) populatePrintMatchSelect();
+      populatePrintMatchSelect();
       showStatus(statusId, true, 'Saved.');
     } else {
       showStatus(statusId, false, res.error);
@@ -763,9 +815,11 @@ function formatDateNice(iso) {
 
 function populatePrintMatchSelect() {
   const sel = document.getElementById('printMatchSelect');
-  if (!sel) return;
-  const rows = (pairings['2'] || []).filter(hasPlayers);
-  sel.innerHTML = '<option value="all">All Day 2 matches</option>' +
+  const daySel = document.getElementById('printDaySelect');
+  if (!sel || !daySel) return;
+  const day = daySel.value;
+  const rows = (pairings[day] || []).filter(hasPlayers);
+  sel.innerHTML = `<option value="all">All Day ${day} matches</option>` +
     rows.map((r) => `<option value="${r.MatchNum}">Match ${r.MatchNum}: ${escapeHtml(matchLabelShort(r))}</option>`).join('');
 }
 
@@ -849,22 +903,83 @@ function scorecardCardHtml(row, rosterList, isSample) {
   `;
 }
 
-// Shows one made-up match so you can check the layout before real Day 2
-// pairings exist yet — uses whatever's actually in the Hole Handicaps table
-// (real Stroke Index/Par if you've entered them, blank otherwise), but the
-// players, their handicaps, and the tee are all fictional.
+// Day 1's Captain's Choice (front 9) and Modified Alternate Shot (back 9) are
+// both one combined score per team per hole, not per player — so this is one
+// row per team instead of four, and no Hcp row/stroke dots (Day 1 doesn't use
+// handicaps at all). Still shows Par (if entered) and each team's two player
+// names for reference.
+function scorecardCardHtmlDay1(row, isSample) {
+  const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
+  const hasPar = holeHandicaps.some((h) => h.Par !== '' && h.Par != null);
+  let holeHeaderCells = '';
+  let parCells = '';
+  for (let h = 1; h <= 18; h++) {
+    const hh = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
+    const segClass = h === 10 ? 'seg' : '';
+    holeHeaderCells += `<th class="${segClass}">${h}</th>`;
+    parCells += `<td class="${segClass}">${hh.Par || ''}</td>`;
+    if (h === 9) { holeHeaderCells += '<th class="sc-sum">OUT</th>'; parCells += '<td class="sc-sum"></td>'; }
+    if (h === 18) { holeHeaderCells += '<th class="sc-sum">IN</th><th class="sc-sum">TOT</th>'; parCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; }
+  }
+  const teamRows = [
+    [names.A, row.TeamA_P1, row.TeamA_P2],
+    [names.B, row.TeamB_P1, row.TeamB_P2],
+  ].map(([teamName, p1, p2]) => {
+    let cells = '';
+    for (let h = 1; h <= 18; h++) {
+      const segClass = h === 10 ? 'seg' : '';
+      cells += `<td class="${segClass}"></td>`;
+      if (h === 9) cells += '<td class="sc-sum"></td>';
+      if (h === 18) cells += '<td class="sc-sum"></td><td class="sc-sum"></td>';
+    }
+    const playersHtml = (p1 || p2) ? ` <span class="sc-tee">(${escapeHtml(p1 || '?')} / ${escapeHtml(p2 || '?')})</span>` : '';
+    return `<tr><td class="sc-name">${escapeHtml(teamName)}${playersHtml}</td>${cells}</tr>`;
+  }).join('');
+
+  return `
+    <div class="scorecard">
+      ${isSample ? '<div class="sc-sample-badge">SAMPLE — for layout preview only, not a real match</div>' : ''}
+      <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
+      <div class="sc-sub">Day 1 &mdash; ${escapeHtml(formatDateNice(settings.Day1Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
+      <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
+      <table class="sc-table">
+        <thead><tr><th class="sc-name">Team</th>${holeHeaderCells}</tr></thead>
+        <tbody>
+          ${hasPar ? `<tr class="sc-meta"><td class="sc-name">Par</td>${parCells}</tr>` : ''}
+          ${teamRows}
+        </tbody>
+      </table>
+      <p class="sc-note">Front 9: Captain's Choice. Back 9: Modified Alternate Shot. One combined score per team per hole &mdash; no handicap strokes apply on Day 1.</p>
+    </div>
+  `;
+}
+
+// Shows one made-up match so you can check the layout before real pairings
+// exist yet for the selected day — Day 2 uses whatever's actually in the
+// Hole Handicaps table (real Stroke Index/Par if you've entered them, blank
+// otherwise), but the players, their handicaps, and the tee are fictional.
 function printSampleScorecard() {
-  const sampleRoster = [
-    { Name: 'Sample Player A1', HandicapIndex: 8, Tee: 'White' },
-    { Name: 'Sample Player A2', HandicapIndex: 14, Tee: 'White' },
-    { Name: 'Sample Player B1', HandicapIndex: 5, Tee: 'Blue' },
-    { Name: 'Sample Player B2', HandicapIndex: 20, Tee: 'White' },
-  ];
-  const sampleRow = {
-    MatchNum: '1', TeamA_P1: 'Sample Player A1', TeamA_P2: 'Sample Player A2',
-    TeamB_P1: 'Sample Player B1', TeamB_P2: 'Sample Player B2', Tee: 'White / Blue',
-  };
-  const cardHtml = scorecardCardHtml(sampleRow, sampleRoster, true);
+  const day = document.getElementById('printDaySelect').value;
+  let cardHtml;
+  if (day === '1') {
+    const sampleRow = {
+      MatchNum: '1', TeamA_P1: 'Sample Player A1', TeamA_P2: 'Sample Player A2',
+      TeamB_P1: 'Sample Player B1', TeamB_P2: 'Sample Player B2', StartHole: '1', Tee: 'White',
+    };
+    cardHtml = scorecardCardHtmlDay1(sampleRow, true);
+  } else {
+    const sampleRoster = [
+      { Name: 'Sample Player A1', HandicapIndex: 8, Tee: 'White' },
+      { Name: 'Sample Player A2', HandicapIndex: 14, Tee: 'White' },
+      { Name: 'Sample Player B1', HandicapIndex: 5, Tee: 'Blue' },
+      { Name: 'Sample Player B2', HandicapIndex: 20, Tee: 'White' },
+    ];
+    const sampleRow = {
+      MatchNum: '1', TeamA_P1: 'Sample Player A1', TeamA_P2: 'Sample Player A2',
+      TeamB_P1: 'Sample Player B1', TeamB_P2: 'Sample Player B2', Tee: 'White / Blue',
+    };
+    cardHtml = scorecardCardHtml(sampleRow, sampleRoster, true);
+  }
   openScorecardWindow(cardHtml);
   showStatus('printStatus', true, 'Opened a sample scorecard in a new tab.');
 }
@@ -882,12 +997,14 @@ function openScorecardWindow(cardsHtml) {
 }
 
 function printScorecards() {
+  const day = document.getElementById('printDaySelect').value;
   const sel = document.getElementById('printMatchSelect').value;
-  if (!sel) { showStatus('printStatus', false, 'No Day 2 matches set up yet.'); return; }
-  const all = (pairings['2'] || []).filter(hasPlayers);
+  if (!sel) { showStatus('printStatus', false, `No Day ${day} matches set up yet.`); return; }
+  const all = (pairings[day] || []).filter(hasPlayers);
   const rows = sel === 'all' ? all : all.filter((r) => String(r.MatchNum) === sel);
-  if (!rows.length) { showStatus('printStatus', false, 'No matches to print — set up Day 2 pairings first.'); return; }
-  const cardsHtml = rows.map((r) => scorecardCardHtml(r)).join('');
+  if (!rows.length) { showStatus('printStatus', false, `No matches to print — set up Day ${day} pairings first.`); return; }
+  const renderer = day === '1' ? (r) => scorecardCardHtmlDay1(r) : (r) => scorecardCardHtml(r);
+  const cardsHtml = rows.map(renderer).join('');
   if (!openScorecardWindow(cardsHtml)) return;
   showStatus('printStatus', true, `Opened ${rows.length} scorecard${rows.length > 1 ? 's' : ''} in a new tab.`);
 }
