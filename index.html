@@ -241,7 +241,11 @@
         <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
           <select id="printMatchSelect"></select>
           <button class="primary" onclick="printScorecards()">Print</button>
+          <button class="secondary" onclick="printSampleScorecard()">Preview Sample Scorecard</button>
         </div>
+        <p class="hint">Haven't set Day 2 pairings yet? "Preview Sample Scorecard" shows the layout with
+          made-up players so you can check it over (and see your Hole Handicaps table reflected in it)
+          before real teams are assembled.</p>
         <div id="printStatus" class="status"></div>
       </div>
     </section>
@@ -264,7 +268,7 @@ const ADMIN_PIN = '1234'; // change this before you publish the repo
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-05f';
+const ADMIN_VERSION = '2026-09-05g';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -782,12 +786,14 @@ const PRINT_CSS = `
   .sc-tee { font-weight: 400; color: #666; font-size: 0.85em; }
   .seg { border-left: 2px solid #333; }
   .sc-note { font-size: 0.78rem; color: #555; margin-top: 10px; }
+  .sc-sample-badge { display: inline-block; background: #fff3cd; color: #7a5b00; border: 1px solid #e6c866; border-radius: 4px; padding: 3px 10px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em; margin-bottom: 8px; }
   .print-bar { margin-bottom: 20px; }
   .print-bar button { font-size: 0.95rem; padding: 8px 16px; cursor: pointer; }
   @media print { .print-bar { display: none; } }
 `;
 
-function scorecardCardHtml(row) {
+function scorecardCardHtml(row, rosterList, isSample) {
+  rosterList = rosterList || roster;
   const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
   const hasPar = holeHandicaps.some((h) => h.Par !== '' && h.Par != null);
   let holeHeaderCells = '';
@@ -807,7 +813,7 @@ function scorecardCardHtml(row) {
     ['TeamB_P1', row.TeamB_P1], ['TeamB_P2', row.TeamB_P2],
   ];
   const playerRows = players.map(([, name]) => {
-    const p = roster.find((r) => r.Name === name);
+    const p = rosterList.find((r) => r.Name === name);
     const hc = p ? p.HandicapIndex : '';
     const tee = p ? p.Tee : '';
     let cells = '';
@@ -826,6 +832,7 @@ function scorecardCardHtml(row) {
 
   return `
     <div class="scorecard">
+      ${isSample ? '<div class="sc-sample-badge">SAMPLE — for layout preview only, not a real match</div>' : ''}
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
       <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
@@ -842,21 +849,46 @@ function scorecardCardHtml(row) {
   `;
 }
 
-function printScorecards() {
-  const sel = document.getElementById('printMatchSelect').value;
-  if (!sel) { showStatus('printStatus', false, 'No Day 2 matches set up yet.'); return; }
-  const all = (pairings['2'] || []).filter(hasPlayers);
-  const rows = sel === 'all' ? all : all.filter((r) => String(r.MatchNum) === sel);
-  if (!rows.length) { showStatus('printStatus', false, 'No matches to print — set up Day 2 pairings first.'); return; }
-  const cardsHtml = rows.map(scorecardCardHtml).join('');
+// Shows one made-up match so you can check the layout before real Day 2
+// pairings exist yet — uses whatever's actually in the Hole Handicaps table
+// (real Stroke Index/Par if you've entered them, blank otherwise), but the
+// players, their handicaps, and the tee are all fictional.
+function printSampleScorecard() {
+  const sampleRoster = [
+    { Name: 'Sample Player A1', HandicapIndex: 8, Tee: 'White' },
+    { Name: 'Sample Player A2', HandicapIndex: 14, Tee: 'White' },
+    { Name: 'Sample Player B1', HandicapIndex: 5, Tee: 'Blue' },
+    { Name: 'Sample Player B2', HandicapIndex: 20, Tee: 'White' },
+  ];
+  const sampleRow = {
+    MatchNum: '1', TeamA_P1: 'Sample Player A1', TeamA_P2: 'Sample Player A2',
+    TeamB_P1: 'Sample Player B1', TeamB_P2: 'Sample Player B2', Tee: 'White / Blue',
+  };
+  const cardHtml = scorecardCardHtml(sampleRow, sampleRoster, true);
+  openScorecardWindow(cardHtml);
+  showStatus('printStatus', true, 'Opened a sample scorecard in a new tab.');
+}
+
+function openScorecardWindow(cardsHtml) {
   const win = window.open('', '_blank');
-  if (!win) { showStatus('printStatus', false, 'Your browser blocked the print window — allow pop-ups for this site and try again.'); return; }
+  if (!win) { showStatus('printStatus', false, 'Your browser blocked the print window — allow pop-ups for this site and try again.'); return null; }
   win.document.write(`<!DOCTYPE html><html><head><title>Scorecards</title><style>${PRINT_CSS}</style></head><body>
     <div class="print-bar"><button onclick="window.print()">Print</button></div>
     ${cardsHtml}
   </body></html>`);
   win.document.close();
   win.focus();
+  return win;
+}
+
+function printScorecards() {
+  const sel = document.getElementById('printMatchSelect').value;
+  if (!sel) { showStatus('printStatus', false, 'No Day 2 matches set up yet.'); return; }
+  const all = (pairings['2'] || []).filter(hasPlayers);
+  const rows = sel === 'all' ? all : all.filter((r) => String(r.MatchNum) === sel);
+  if (!rows.length) { showStatus('printStatus', false, 'No matches to print — set up Day 2 pairings first.'); return; }
+  const cardsHtml = rows.map((r) => scorecardCardHtml(r)).join('');
+  if (!openScorecardWindow(cardsHtml)) return;
   showStatus('printStatus', true, `Opened ${rows.length} scorecard${rows.length > 1 ? 's' : ''} in a new tab.`);
 }
 
