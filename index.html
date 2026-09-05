@@ -94,7 +94,10 @@
       <h1 id="tournamentTitle">Heritage Legends Tournament</h1>
       <div class="sub" id="tournamentSub">Admin — Team &amp; Pairing Setup</div>
     </div>
-    <div class="sub" id="envBadge"></div>
+    <div class="sub">
+      <div id="envBadge"></div>
+      <div id="versionBadge" style="font-size:11px; opacity:0.7;"></div>
+    </div>
   </header>
   <nav>
     <button class="tab-btn active" data-tab="settings">Settings</button>
@@ -228,6 +231,12 @@ const CONFIG = {
 };
 const ADMIN_PIN = '1234'; // change this before you publish the repo
 
+// Bumped by hand every time this file changes — shown in the header next to
+// the live "Backend:" version (from Code.gs) so you can tell at a glance
+// whether the page you're looking at, and the Apps Script it's talking to,
+// are both up to date.
+const ADMIN_VERSION = '2026-09-05a';
+
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
 // Otherwise, once this is deployed to two separate GitHub Pages URLs, it falls
@@ -294,7 +303,19 @@ let settings = {};
 let holeHandicaps = []; // [{Hole, StrokeIndex, Par}] x18
 
 // ====================== INIT ======================
+async function loadVersionBadge() {
+  const el = document.getElementById('versionBadge');
+  el.textContent = `Page: ${ADMIN_VERSION} • Backend: …`;
+  try {
+    const res = await apiGet('getVersion');
+    el.textContent = `Page: ${ADMIN_VERSION} • Backend: ${res.success ? res.data.version : 'unknown'}`;
+  } catch (err) {
+    el.textContent = `Page: ${ADMIN_VERSION} • Backend: unreachable`;
+  }
+}
+
 async function init() {
+  loadVersionBadge();
   const [settingsRes, rosterRes, hcRes] = await Promise.all([apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps')]);
   if (settingsRes.success) {
     settings = settingsRes.data;
@@ -469,6 +490,7 @@ function rosterRowEl(p, idx) {
         <option value="" ${!p.Team ? 'selected' : ''}>— Unassigned —</option>
         <option value="A" ${p.Team === 'A' ? 'selected' : ''}>${escapeHtml(teamLabel('A'))}</option>
         <option value="B" ${p.Team === 'B' ? 'selected' : ''}>${escapeHtml(teamLabel('B'))}</option>
+        <option value="ON_STANDBY" ${p.Team === 'ON_STANDBY' ? 'selected' : ''}>On standby</option>
         <option value="NOT_PLAYING" ${p.Team === 'NOT_PLAYING' ? 'selected' : ''}>Not participating</option>
       </select>
     </td>
