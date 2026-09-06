@@ -203,7 +203,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-06h';
+const LIVE_VERSION = '2026-09-06j';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -268,7 +268,21 @@ function playerTee(name) {
   return p ? p.Tee : '';
 }
 
-// strokes a player receives on one hole, from their full Handicap Index
+// Course Handicap = Handicap Index x (Slope/113) + (Course Rating - Par),
+// per this course's own rating/slope for each tee (Par 72 both tees):
+//   Red:  Slope 111, Rating 64.1
+//   Gold: Slope 120, Rating 67.1 (also used for any tee other than Red)
+// This is what actually gets used for strokes everywhere — matches the same
+// formula in index.html so Roster, print, and live scoring never disagree.
+function courseHandicap(handicapIndex, tee) {
+  const idx = parseFloat(handicapIndex);
+  if (isNaN(idx)) return '';
+  const isRed = (tee || '').trim().toLowerCase() === 'red';
+  const ch = isRed ? (idx * 111 / 113 + (64.1 - 72)) : (idx * 120 / 113 + (67.1 - 72));
+  return Math.round(ch);
+}
+
+// strokes a player receives on one hole, from their Course Handicap
 function strokesOnHole(handicapIndex, strokeIndex) {
   const hc = parseFloat(handicapIndex);
   const si = parseInt(strokeIndex, 10);
@@ -559,7 +573,7 @@ function hbhRowHtml(field, name, handicapPlayerName, hole, holeRow) {
   const val = holeRow[field];
   const player = handicapPlayerName ? rosterByName[handicapPlayerName] : null;
   const strokeIndex = player ? strokeIndexForTee(player.Tee, hole) : undefined;
-  const strokesHere = player ? strokesOnHole(player.HandicapIndex, strokeIndex) : 0;
+  const strokesHere = player ? strokesOnHole(courseHandicap(player.HandicapIndex, player.Tee), strokeIndex) : 0;
   const strokeNote = strokesHere > 0 ? `<div class="hbh-stroke-note">Gets ${strokesHere} stroke${strokesHere > 1 ? 's' : ''} here<span class="hbh-dot"></span></div>` : '';
   return `
     <div class="hbh-player-row">
@@ -798,7 +812,7 @@ function grossFieldForPlayer(pairingRow, name) {
 }
 function playerHandicap(name) {
   const p = rosterByName[name];
-  return p ? p.HandicapIndex : '';
+  return p ? courseHandicap(p.HandicapIndex, p.Tee) : '';
 }
 // Which individual Match Play slot (1 or 2) a player is in — Team A's is
 // always fixed (P1→MP1, P2→MP2), but "swap opponents" in admin can move
@@ -933,12 +947,13 @@ function scorecardHtmlForMatch(day, pairingRow, holeRows) {
     const playerRowHtml = (field, name) => {
       const tee = playerTee(name);
       const hc = playerHandicap(name);
-      let cells = '', out = 0, hasOut = false, inn = 0, hasIn = false;
+      let cells = '', out = 0, hasOut = false, inn = 0, hasIn = false, strokesTotal = 0;
       for (let h = 1; h <= 18; h++) {
         const row = holeRows[h - 1] || {};
         const gross = row[field];
         const si = strokeIndexForTee(tee, h);
         const strokes = name ? strokesOnHole(hc, si) : 0;
+        strokesTotal += strokes;
         const dots = strokes > 0 ? `<span class="sc-dots">${'&bull;'.repeat(strokes)}</span>` : '';
         const segClass = h === 10 ? 'seg' : '';
         const startClass = h === startHoleNum ? ' sc-start-hole' : '';
@@ -948,7 +963,12 @@ function scorecardHtmlForMatch(day, pairingRow, holeRows) {
         if (h === 9) cells += `<td class="sc-sum">${hasOut ? out : ''}</td>`;
         if (h === 18) cells += `<td class="sc-sum">${hasIn ? inn : ''}</td><td class="sc-sum">${(hasOut || hasIn) ? (out + inn) : ''}</td>`;
       }
-      const teeHtml = tee ? ` <span class="sc-tee">(${escapeHtml(tee)})</span>` : '';
+      // Course handicap (total strokes across all 18) shown right next to the
+      // tee, so it's easy to sanity-check against what's in the Roster instead
+      // of having to count dots by hand.
+      const strokesLabel = strokesTotal > 0 ? `${strokesTotal} stroke${strokesTotal === 1 ? '' : 's'}` : '';
+      const parenBits = [tee, strokesLabel].filter(Boolean).join(', ');
+      const teeHtml = parenBits ? ` <span class="sc-tee">(${escapeHtml(parenBits)})</span>` : '';
       return `<tr><td class="sc-name">${escapeHtml(name || '(unassigned)')}${teeHtml}</td>${cells}</tr>`;
     };
 

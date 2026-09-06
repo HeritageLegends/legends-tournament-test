@@ -75,6 +75,7 @@
   .roster-team-col { width: 220px; }
   .roster-narrow-col { width: 80px; }
   .roster-action-col { width: 64px; }
+  .roster-ch-cell { text-align: center; color: #444; }
   .placeholder-badge {
     display: inline-block; background: #fff3cd; color: #7a5b00; border-radius: 4px;
     padding: 2px 8px; font-size: 0.75rem; margin-left: 8px;
@@ -159,7 +160,7 @@
     <section id="tab-roster" class="tab-panel" hidden>
       <div class="card">
         <h2>Roster</h2>
-        <p class="hint">Add every player and which team they're on. Handicap Index and Tee are used for Day 2 net scoring (added in a later stage) — fill them in whenever you have them, they're not required to set up pairings.</p>
+        <p class="hint">Add every player and which team they're on. Handicap Index and Tee are used for Day 2 net scoring — fill them in whenever you have them, they're not required to set up pairings. <strong>Course Handicap</strong> is calculated automatically from those two (Red: Slope 111 / Rating 64.1; Gold: Slope 120 / Rating 67.1; Par 72 both) and is what's actually used for strokes on scorecards and during matches — it's read-only here, just type in Handicap Index and Tee and it fills itself in.</p>
         <table id="rosterTable">
           <thead>
             <tr>
@@ -167,6 +168,7 @@
               <th class="roster-team-col">Team</th>
               <th class="roster-narrow-col">Handicap Index</th>
               <th class="roster-narrow-col">Tee</th>
+              <th class="roster-narrow-col">Course Handicap</th>
               <th class="roster-action-col"></th>
             </tr>
           </thead>
@@ -245,6 +247,8 @@
           as dots on the holes they apply to. <strong>Day 1</strong> is one row per team instead of per
           player, since Captain's Choice and Modified Alternate Shot are both one combined score per
           team per hole — no handicap strokes apply, so there's no Hcp row or dots for that day.
+          Any match printed without a Scorekeeper PIN yet automatically gets one generated and saved,
+          and it's printed right on the card as a backup way to unlock scoring on Live Scoring.
         </p>
         <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
           <select id="printDaySelect" onchange="populatePrintMatchSelect()">
@@ -278,7 +282,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-06h';
+const ADMIN_VERSION = '2026-09-06k';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -373,6 +377,20 @@ function strokeIndexForTee(tee, hole) {
   const table = isRed ? holeHandicapsRed : holeHandicaps;
   const hh = table.find((r) => Number(r.Hole) === hole) || {};
   return hh.StrokeIndex;
+}
+
+// Course Handicap = Handicap Index x (Slope/113) + (Course Rating - Par),
+// per this course's own rating/slope for each tee (Par 72 both tees):
+//   Red:  Slope 111, Rating 64.1
+//   Gold: Slope 120, Rating 67.1 (also used for any tee other than Red)
+// This is what actually gets used for strokes everywhere in the app — on the
+// Roster it's a read-only, auto-calculated column, not something you type in.
+function courseHandicap(handicapIndex, tee) {
+  const idx = parseFloat(handicapIndex);
+  if (isNaN(idx)) return '';
+  const isRed = (tee || '').trim().toLowerCase() === 'red';
+  const ch = isRed ? (idx * 111 / 113 + (64.1 - 72)) : (idx * 120 / 113 + (67.1 - 72));
+  return Math.round(ch);
 }
 
 // ====================== INIT ======================
@@ -575,14 +593,27 @@ function rosterRowEl(p, idx) {
     </td>
     <td><input type="number" step="0.1" value="${p.HandicapIndex || ''}" data-field="HandicapIndex" data-idx="${idx}"></td>
     <td><input type="text" value="${escapeAttr(p.Tee || '')}" data-field="Tee" data-idx="${idx}"></td>
+    <td class="roster-ch-cell" data-ch-idx="${idx}">${rosterChDisplay(p)}</td>
     <td><button class="link" onclick="removeRosterRow(${idx})">Remove</button></td>
   `;
   tr.querySelectorAll('input, select').forEach((el) => {
     el.addEventListener('change', (e) => {
       roster[idx][e.target.dataset.field] = e.target.value;
+      if (e.target.dataset.field === 'HandicapIndex' || e.target.dataset.field === 'Tee') {
+        const chCell = tr.querySelector(`[data-ch-idx="${idx}"]`);
+        if (chCell) chCell.textContent = rosterChDisplay(roster[idx]);
+      }
     });
   });
   return tr;
+}
+
+// Read-only display for the Roster's Course Handicap column — recomputed
+// live as Handicap Index / Tee are edited, never stored as its own field.
+function rosterChDisplay(p) {
+  if (!p || p.HandicapIndex === '' || p.HandicapIndex === undefined || p.HandicapIndex === null) return '';
+  const ch = courseHandicap(p.HandicapIndex, p.Tee);
+  return ch === '' ? '' : String(ch);
 }
 
 function addRosterRow() {
@@ -778,7 +809,8 @@ async function savePairings(day) {
 // ====================== PRINT SCORECARDS (Day 2 only) ======================
 // Same strokes-per-hole math as live.html's scoring page, duplicated here
 // since this file doesn't share code with it — every player gets strokes on
-// their own hardest holes based on their full Handicap Index from the Roster.
+// their own hardest holes based on their Course Handicap (see courseHandicap
+// above), not their raw Handicap Index.
 function strokesOnHolePrint(handicapIndex, strokeIndex) {
   const hc = parseFloat(handicapIndex);
   const si = parseInt(strokeIndex, 10);
@@ -854,6 +886,7 @@ const PRINT_CSS = `
   .sc-title { font-size: 1.3rem; font-weight: 700; }
   .sc-sub { font-size: 0.95rem; color: #444; margin-top: 2px; }
   .sc-teams { font-size: 1rem; font-weight: 600; margin-top: 4px; }
+  .sc-pin-badge { display: inline-block; margin-top: 6px; padding: 4px 10px; border: 1.5px solid #333; border-radius: 6px; font-size: 0.85rem; font-weight: 600; background: #fafafa; }
   table.sc-table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 0.8rem; }
   table.sc-table th, table.sc-table td { border: 1px solid #999; padding: 5px 2px; text-align: center; min-width: 22px; }
   table.sc-table th.sc-name, table.sc-table td.sc-name { text-align: left; padding: 5px 8px; white-space: nowrap; font-weight: 600; min-width: 130px; }
@@ -908,12 +941,14 @@ function scorecardCardHtml(row, rosterList, isSample) {
   }
   const playerRowHtml = (name) => {
     const p = rosterList.find((r) => r.Name === name);
-    const hc = p ? p.HandicapIndex : '';
+    const hc = p ? courseHandicap(p.HandicapIndex, p.Tee) : '';
     const tee = p ? p.Tee : '';
     let cells = '';
+    let strokesTotal = 0;
     for (let h = 1; h <= 18; h++) {
       const si = strokeIndexForTee(tee, h);
       const strokes = name ? strokesOnHolePrint(hc, si) : 0;
+      strokesTotal += strokes;
       const dots = strokes > 0 ? `<span class="sc-dots">${'&bull;'.repeat(strokes)}</span>` : '';
       const segClass = h === 10 ? 'seg' : '';
       const startClass = h === startHoleNum ? ' sc-start-hole' : '';
@@ -921,7 +956,12 @@ function scorecardCardHtml(row, rosterList, isSample) {
       if (h === 9) cells += '<td class="sc-sum"></td>';
       if (h === 18) cells += '<td class="sc-sum"></td><td class="sc-sum"></td>';
     }
-    const teeHtml = tee ? ` <span class="sc-tee">(${escapeHtml(tee)})</span>` : '';
+    // Course handicap (total strokes across all 18) shown right next to the
+    // tee, so it's easy to sanity-check against what's in the Roster instead
+    // of having to count dots by hand.
+    const strokesLabel = strokesTotal > 0 ? `${strokesTotal} stroke${strokesTotal === 1 ? '' : 's'}` : '';
+    const parenBits = [tee, strokesLabel].filter(Boolean).join(', ');
+    const teeHtml = parenBits ? ` <span class="sc-tee">(${escapeHtml(parenBits)})</span>` : '';
     return `<tr><td class="sc-name">${escapeHtml(name || '(unassigned)')}${teeHtml}</td>${cells}</tr>`;
   };
 
@@ -945,6 +985,7 @@ function scorecardCardHtml(row, rosterList, isSample) {
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
       <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
+      ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
       <table class="sc-table">
         <thead>
           ${segmentHeaderRowHtml("Front 9: Best Ball", "Back 9: Individual Match Play")}
@@ -1016,6 +1057,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
       <div class="sc-sub">Day 1 &mdash; ${escapeHtml(formatDateNice(settings.Day1Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
+      ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
       <table class="sc-table">
         <thead>
           ${segmentHeaderRowHtml("Front 9: Captain's Choice", "Back 9: Modified Alternate Shot")}
@@ -1079,17 +1121,49 @@ function openScorecardWindow(cardsHtml) {
   return win;
 }
 
-function printScorecards() {
+// Every match that will actually be printed should have a Scorekeeper PIN on
+// it, so a team without a phone-signal on the course can still call it in to
+// unlock scoring — this backfills any missing PINs on just the matches being
+// printed and saves them to the sheet before the print window opens, so the
+// admin never has to remember a separate "generate PINs" step first.
+async function ensurePinsForPrint(day, rows) {
+  const missing = rows.filter((r) => !r.PIN);
+  if (!missing.length) return { ok: true, generated: 0 };
+  missing.forEach((r) => { r.PIN = randomPin4(); });
+  try {
+    const res = await apiPost('savePairings', { day, pairings: JSON.stringify(pairings[day]) });
+    if (res.success) {
+      pairings[day] = res.data;
+      renderPairings(day);
+      return { ok: true, generated: missing.length };
+    }
+    return { ok: false, error: res.error };
+  } catch (err) {
+    return { ok: false, error: 'Network error: ' + err.message };
+  }
+}
+
+async function printScorecards() {
   const day = document.getElementById('printDaySelect').value;
   const sel = document.getElementById('printMatchSelect').value;
   if (!sel) { showStatus('printStatus', false, `No Day ${day} matches set up yet.`); return; }
   const all = (pairings[day] || []).filter(hasPlayers);
-  const rows = sel === 'all' ? all : all.filter((r) => String(r.MatchNum) === sel);
+  let rows = sel === 'all' ? all : all.filter((r) => String(r.MatchNum) === sel);
   if (!rows.length) { showStatus('printStatus', false, `No matches to print — set up Day ${day} pairings first.`); return; }
+  let generatedCount = 0;
+  if (rows.some((r) => !r.PIN)) {
+    const pinResult = await ensurePinsForPrint(day, rows);
+    if (!pinResult.ok) { showStatus('printStatus', false, `Couldn't auto-generate PINs: ${pinResult.error}`); return; }
+    generatedCount = pinResult.generated;
+    // rows now point at the pre-save objects; re-select the fresh saved rows so the printed PINs match what's stored
+    const allFresh = (pairings[day] || []).filter(hasPlayers);
+    rows = sel === 'all' ? allFresh : allFresh.filter((r) => String(r.MatchNum) === sel);
+  }
   const renderer = day === '1' ? (r) => scorecardCardHtmlDay1(r) : (r) => scorecardCardHtml(r);
   const cardsHtml = rows.map(renderer).join('');
   if (!openScorecardWindow(cardsHtml)) return;
-  showStatus('printStatus', true, `Opened ${rows.length} scorecard${rows.length > 1 ? 's' : ''} in a new tab.`);
+  const pinNote = generatedCount ? ` (generated and saved ${generatedCount} new PIN${generatedCount > 1 ? 's' : ''})` : '';
+  showStatus('printStatus', true, `Opened ${rows.length} scorecard${rows.length > 1 ? 's' : ''} in a new tab${pinNote}.`);
 }
 
 // ====================== UTIL ======================
