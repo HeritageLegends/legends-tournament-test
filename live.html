@@ -131,7 +131,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-05c';
+const LIVE_VERSION = '2026-09-06b';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -166,13 +166,28 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 });
 
 // ====================== SHARED STATE ======================
-let settings = {}, roster = [], holeHC = {}; // holeHC: {hole: strokeIndex}
+// holeHC: two parallel Stroke Index tables — `default` (every tee except Red)
+// and `red` (Red tees only, which play to a different Stroke Index on this
+// course). Each is {hole: strokeIndex}.
+let settings = {}, roster = [], holeHC = { default: {}, red: {} };
 let pairings = { 1: [], 2: [] };
-let rosterByName = {}; // Name -> {HandicapIndex}
+let rosterByName = {}; // Name -> {HandicapIndex, Tee}
 
 function indexRoster() {
   rosterByName = {};
   roster.forEach((p) => { if (p.Name) rosterByName[p.Name] = p; });
+}
+
+// Which Stroke Index table a player's tee should use — Red tees get their own
+// table, everything else (Gold, White, Blue, blank, ...) shares the main one.
+function strokeIndexForTee(tee, hole) {
+  const isRed = (tee || '').trim().toLowerCase() === 'red';
+  const table = isRed ? holeHC.red : holeHC.default;
+  return table ? table[hole] : undefined;
+}
+function playerTee(name) {
+  const p = rosterByName[name];
+  return p ? p.Tee : '';
 }
 
 // strokes a player receives on one hole, from their full Handicap Index
@@ -199,14 +214,18 @@ function compareHole(aVal, bVal) {
 }
 
 async function loadShared() {
-  const [sRes, rRes, hRes, p1Res, p2Res] = await Promise.all([
-    apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }),
+  const [sRes, rRes, hRes, hRedRes, p1Res, p2Res] = await Promise.all([
+    apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getHoleHandicapsRed'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }),
   ]);
   if (sRes.success) { settings = sRes.data; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; }
   if (rRes.success) { roster = rRes.data; indexRoster(); }
   if (hRes.success) {
-    holeHC = {};
-    hRes.data.forEach((row) => { if (row.Hole) holeHC[row.Hole] = row.StrokeIndex; });
+    holeHC.default = {};
+    hRes.data.forEach((row) => { if (row.Hole) holeHC.default[row.Hole] = row.StrokeIndex; });
+  }
+  if (hRedRes.success) {
+    holeHC.red = {};
+    hRedRes.data.forEach((row) => { if (row.Hole) holeHC.red[row.Hole] = row.StrokeIndex; });
   }
   if (p1Res.success) pairings['1'] = p1Res.data;
   if (p2Res.success) pairings['2'] = p2Res.data;
@@ -223,7 +242,13 @@ function matchLabel(day, row) {
 
 // ====================== LIVE SCORING ======================
 let currentHoles = []; // in-memory grid for the currently selected match
-let saveTimer = null;
+// Pending autosaves, keyed by "day_matchNum" — a separate timer per match
+// rather than one shared timer, so editing a different match (or just
+// switching which match you're viewing) never cancels or overwrites another
+// match's still-pending save. Each entry captures the day/matchNum/holes it
+// was scheduled for, so it always saves the right data to the right match
+// even after you've navigated away — see scheduleAutosave/saveCurrentMatch.
+let saveTimers = {};
 let scViewMode = 'hbh'; // 'hbh' (one hole at a time) | 'grid' (full 18-hole scorecard)
 let scHoleIndex = 0; // 0-based, 0..17 — which hole the hbh view is showing
 
@@ -381,7 +406,6 @@ function renderHoleByHole(day, matchNum) {
   const names = teamNames();
   const h = scHoleIndex + 1; // 1-based hole number
   const holeRow = currentHoles[scHoleIndex];
-  const si = holeHC[h];
   const segLabel = h <= 9
     ? (day === '2' ? 'Best Ball (front 9)' : "Captain's Choice (front 9)")
     : (day === '2' ? 'Individual Match Play (back 9)' : 'Modified Alternate Shot (back 9)');
@@ -392,10 +416,10 @@ function renderHoleByHole(day, matchNum) {
       ['TeamA_P1_Gross', pairingRow.TeamA_P1], ['TeamA_P2_Gross', pairingRow.TeamA_P2],
       ['TeamB_P1_Gross', pairingRow.TeamB_P1], ['TeamB_P2_Gross', pairingRow.TeamB_P2],
     ];
-    rowsHtml = roles.map(([field, name]) => hbhRowHtml(field, name || '(unassigned)', name, si, holeRow)).join('');
+    rowsHtml = roles.map(([field, name]) => hbhRowHtml(field, name || '(unassigned)', name, h, holeRow)).join('');
   } else {
     rowsHtml = [['TeamA_Strokes', names.A, null], ['TeamB_Strokes', names.B, null]]
-      .map(([field, label]) => hbhRowHtml(field, label, null, si, holeRow)).join('');
+      .map(([field, label]) => hbhRowHtml(field, label, null, h, holeRow)).join('');
   }
 
   wrap.innerHTML = `
@@ -435,9 +459,10 @@ function renderHoleByHole(day, matchNum) {
   renderStatusLines(day, matchNum, pairingRow);
 }
 
-function hbhRowHtml(field, name, handicapPlayerName, strokeIndex, holeRow) {
+function hbhRowHtml(field, name, handicapPlayerName, hole, holeRow) {
   const val = holeRow[field];
   const player = handicapPlayerName ? rosterByName[handicapPlayerName] : null;
+  const strokeIndex = player ? strokeIndexForTee(player.Tee, hole) : undefined;
   const strokesHere = player ? strokesOnHole(player.HandicapIndex, strokeIndex) : 0;
   const strokeNote = strokesHere > 0 ? `<div class="hbh-stroke-note">Gets ${strokesHere} stroke${strokesHere > 1 ? 's' : ''} here<span class="hbh-dot"></span></div>` : '';
   return `
@@ -520,25 +545,46 @@ function renderFullGrid(day, matchNum) {
 
 function scheduleAutosave(day, matchNum) {
   setSaveIndicator('saving', 'Saving…');
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveCurrentMatch(), 1500);
+  const key = day + '_' + matchNum;
+  clearTimeout(saveTimers[key]);
+  // Capture the array reference now, not just the day/matchNum. Further edits
+  // to this same match before the timer fires keep mutating this same array
+  // (so the save 1.5s from now still includes them) — but if you switch to a
+  // different match, `currentHoles` gets reassigned to a new array for that
+  // match, and this timer's captured reference is unaffected by that, so it
+  // still saves this match's own data, not whatever's now on screen.
+  const holesSnapshot = currentHoles;
+  saveTimers[key] = setTimeout(() => {
+    delete saveTimers[key];
+    saveCurrentMatch(day, matchNum, holesSnapshot);
+  }, 1500);
 }
 function setSaveIndicator(cls, text) {
   const el = document.getElementById('saveIndicator');
   el.className = 'save-indicator ' + cls;
   el.textContent = text;
 }
-async function saveCurrentMatch() {
-  const day = document.getElementById('scDay').value;
-  const matchNum = document.getElementById('scMatch').value;
+// Called two ways: with no arguments, by the "Save Now" button — always means
+// "save whatever match is on screen right now, using what's on screen right
+// now". With explicit args, by a debounced autosave (see scheduleAutosave) —
+// always saves the specific match/data it was scheduled for, regardless of
+// what's currently selected, and only touches the visible Saving/Saved
+// indicator if that same match still happens to be the one on screen.
+async function saveCurrentMatch(day, matchNum, holes) {
+  if (day === undefined) day = document.getElementById('scDay').value;
+  if (matchNum === undefined) matchNum = document.getElementById('scMatch').value;
+  if (holes === undefined) holes = currentHoles;
   if (!matchNum) return;
-  clearTimeout(saveTimer);
-  setSaveIndicator('saving', 'Saving…');
+  const key = day + '_' + matchNum;
+  clearTimeout(saveTimers[key]);
+  delete saveTimers[key];
+  const isCurrentlyViewed = () => String(document.getElementById('scDay').value) === String(day) && String(document.getElementById('scMatch').value) === String(matchNum);
+  if (isCurrentlyViewed()) setSaveIndicator('saving', 'Saving…');
   try {
-    const res = await apiPost('saveMatchScores', { day, matchNum, holes: JSON.stringify(currentHoles) });
-    setSaveIndicator(res.success ? 'saved' : 'error', res.success ? 'Saved ✓' : res.error);
+    const res = await apiPost('saveMatchScores', { day, matchNum, holes: JSON.stringify(holes) });
+    if (isCurrentlyViewed()) setSaveIndicator(res.success ? 'saved' : 'error', res.success ? 'Saved ✓' : res.error);
   } catch (err) {
-    setSaveIndicator('error', 'Network error');
+    if (isCurrentlyViewed()) setSaveIndicator('error', 'Network error');
   }
 }
 
@@ -608,9 +654,12 @@ function computeDay2BestBall(pairingRow, holeRows) {
   let aWins = 0, bWins = 0, halves = 0, decided = 0;
   for (let h = 1; h <= 9; h++) {
     const row = holeRows[h - 1];
-    const si = holeHC[h];
-    const aNets = [netScore(row.TeamA_P1_Gross, playerHandicap(pairingRow.TeamA_P1), si), netScore(row.TeamA_P2_Gross, playerHandicap(pairingRow.TeamA_P2), si)].filter((v) => v !== null);
-    const bNets = [netScore(row.TeamB_P1_Gross, playerHandicap(pairingRow.TeamB_P1), si), netScore(row.TeamB_P2_Gross, playerHandicap(pairingRow.TeamB_P2), si)].filter((v) => v !== null);
+    const siA1 = strokeIndexForTee(playerTee(pairingRow.TeamA_P1), h);
+    const siA2 = strokeIndexForTee(playerTee(pairingRow.TeamA_P2), h);
+    const siB1 = strokeIndexForTee(playerTee(pairingRow.TeamB_P1), h);
+    const siB2 = strokeIndexForTee(playerTee(pairingRow.TeamB_P2), h);
+    const aNets = [netScore(row.TeamA_P1_Gross, playerHandicap(pairingRow.TeamA_P1), siA1), netScore(row.TeamA_P2_Gross, playerHandicap(pairingRow.TeamA_P2), siA2)].filter((v) => v !== null);
+    const bNets = [netScore(row.TeamB_P1_Gross, playerHandicap(pairingRow.TeamB_P1), siB1), netScore(row.TeamB_P2_Gross, playerHandicap(pairingRow.TeamB_P2), siB2)].filter((v) => v !== null);
     const aBest = aNets.length ? Math.min(...aNets) : null;
     const bBest = bNets.length ? Math.min(...bNets) : null;
     const result = compareHole(aBest, bBest);
@@ -628,11 +677,12 @@ function computeDay2MatchPlay(pairingRow, holeRows, mpNum) {
   let aWins = 0, bWins = 0, halves = 0, decided = 0;
   for (let h = 10; h <= 18; h++) {
     const row = holeRows[h - 1];
-    const si = holeHC[h];
+    const siA = strokeIndexForTee(playerTee(aName), h);
+    const siB = strokeIndexForTee(playerTee(bName), h);
     const aField = grossFieldForPlayer(pairingRow, aName);
     const bField = grossFieldForPlayer(pairingRow, bName);
-    const aNet = aField ? netScore(row[aField], playerHandicap(aName), si) : null;
-    const bNet = bField ? netScore(row[bField], playerHandicap(bName), si) : null;
+    const aNet = aField ? netScore(row[aField], playerHandicap(aName), siA) : null;
+    const bNet = bField ? netScore(row[bField], playerHandicap(bName), siB) : null;
     const result = compareHole(aNet, bNet);
     if (result === 'pending') continue;
     decided++;
