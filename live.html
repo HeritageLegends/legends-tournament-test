@@ -40,13 +40,6 @@
   .save-indicator.saving { color: var(--muted); }
   .save-indicator.saved { color: var(--ok); }
   .save-indicator.error { color: var(--error); }
-  .match-card { border-bottom: 1px solid var(--border); padding: 12px 0; }
-  .match-card:last-child { border-bottom: none; }
-  .match-title { font-weight: 600; color: var(--green-dark); margin-bottom: 4px; }
-  .totals { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 8px; }
-  .totals .pt { text-align: center; }
-  .totals .pt .num { font-size: 1.8rem; font-weight: 700; color: var(--green-dark); }
-  .totals .pt .lbl { font-size: 0.8rem; color: var(--muted); }
   .hint { font-size: 0.8rem; color: var(--muted); }
   [hidden] { display: none !important; }
   button.primary { background: var(--green); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 600; }
@@ -70,14 +63,29 @@
   .hbh-input.has-stroke { border-color: var(--gold); background: #fbf3e4; }
   .hbh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-left: 4px; }
 
-  /* ---- Leaderboard (top of Live Scoring tab) ---- */
-  .lb-header-row { justify-content: space-between; margin-bottom: 8px; }
-  table.lb-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-  table.lb-table th, table.lb-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: center; }
-  table.lb-table th { background: #f0f0ea; font-weight: 600; }
-  table.lb-table th.lb-pair-h, table.lb-table td.lb-pair { text-align: left; }
-  table.lb-table td.lb-pts { font-weight: 700; width: 54px; }
-  table.lb-table tr.lb-total td { font-weight: 700; background: #fbf3e4; border-top: 2px solid var(--gold); }
+  /* ---- Leaderboard (Scoreboard tab) — modeled on a printed match-play
+     leaderboard: Points | pairing | Match | pairing | Points, winning side
+     highlighted, with each match's segment statuses stacked in the middle
+     column. ---- */
+  .lbx-wrap { overflow-x: auto; }
+  table.lbx-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  table.lbx-table th, table.lbx-table td { padding: 8px 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); }
+  tr.lbx-head th { background: var(--green-dark); color: #fff; font-weight: 700; border-bottom: none; }
+  tr.lbx-head th.lbx-pair-h { text-align: left; }
+  td.lbx-pair-h, td.lbx-pair { text-align: left; }
+  td.lbx-pts { font-weight: 700; font-size: 1rem; width: 60px; }
+  .lbx-names { font-weight: 600; color: var(--green-dark); }
+  .lbx-matchnum { font-size: 0.72rem; color: var(--muted); }
+  .lbx-match { min-width: 200px; }
+  .lbx-seg { font-size: 0.78rem; margin: 2px 0; text-align: left; }
+  .lbx-seg-label { color: var(--muted); }
+  .lbx-unset { text-align: center; color: var(--muted); font-style: italic; padding: 10px; }
+  td.lbx-lead { background: #fbeceb; }
+  td.lbx-final-lead { background: var(--error); color: #fff; }
+  td.lbx-final-lead .lbx-names { color: #fff; }
+  td.lbx-tied { background: #eee; }
+  tr.lbx-total td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
+  tr.lbx-total td.lbx-pair-h { text-align: left; }
 
   /* ---- Live scorecard replica (below Enter Scores) ---- */
   .sc-teams-live { font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
@@ -115,17 +123,6 @@
   <!-- LIVE SCORING -->
   <section id="tab-scoring" class="tab-panel">
     <div class="card">
-      <div class="row lb-header-row">
-        <h2 style="margin:0;">Leaderboard</h2>
-        <div class="row" style="margin:0;">
-          <select id="lbDay"><option value="1">Day 1</option><option value="2">Day 2</option></select>
-          <button type="button" class="secondary" id="lbToggleBtn" onclick="toggleLeaderboard()">Collapse</button>
-        </div>
-      </div>
-      <div id="lbBody"></div>
-    </div>
-
-    <div class="card">
       <h2>Enter Scores</h2>
       <div class="row">
         <select id="scDay"><option value="1">Day 1</option><option value="2">Day 2</option></select>
@@ -151,8 +148,7 @@
         <select id="sbDay"><option value="1">Day 1</option><option value="2">Day 2</option></select>
         <button class="secondary" onclick="loadScoreboard()">Refresh</button>
       </div>
-      <div class="totals" id="sbTotals"></div>
-      <div id="sbMatches"></div>
+      <div id="sbLeaderboard"></div>
     </div>
   </section>
 
@@ -169,7 +165,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-06c';
+const LIVE_VERSION = '2026-09-06d';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -297,67 +293,6 @@ function hasPlayersLb(row) {
 // Points are always in 0.5 steps — format drops a trailing ".0" but keeps ".5".
 function formatPts(n) {
   return (Math.round(n * 2) / 2).toString();
-}
-// A match "hole played" once either side has a score in for it, regardless of
-// which segment/format that hole belongs to.
-function countHolesPlayed(day, holeRows) {
-  const fields = day === '2'
-    ? ['TeamA_P1_Gross', 'TeamA_P2_Gross', 'TeamB_P1_Gross', 'TeamB_P2_Gross']
-    : ['TeamA_Strokes', 'TeamB_Strokes'];
-  let count = 0;
-  holeRows.forEach((r) => { if (fields.some((f) => r[f] !== '' && r[f] !== undefined)) count++; });
-  return count;
-}
-
-// ====================== LEADERBOARD ======================
-let lbCollapsed = false;
-function toggleLeaderboard() {
-  lbCollapsed = !lbCollapsed;
-  document.getElementById('lbBody').hidden = lbCollapsed;
-  document.getElementById('lbToggleBtn').textContent = lbCollapsed ? 'Expand' : 'Collapse';
-}
-document.getElementById('lbDay').addEventListener('change', loadLeaderboard);
-
-async function loadLeaderboard() {
-  const day = document.getElementById('lbDay').value;
-  const res = await apiGet('getScores', { day });
-  const scoresByMatch = {};
-  if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
-
-  const names = teamNames();
-  let totalA = 0, totalB = 0;
-  const rowsHtml = (pairings[day] || []).filter(hasPlayersLb).map((row) => {
-    const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
-    let segs;
-    if (day === '2') {
-      segs = [computeDay2BestBall(row, holeRows), computeDay2MatchPlay(row, holeRows, 1), computeDay2MatchPlay(row, holeRows, 2)];
-    } else {
-      segs = [computeDay1Segment(holeRows, 1, 9, 'TeamA_Strokes', 'TeamB_Strokes'), computeDay1Segment(holeRows, 10, 18, 'TeamA_Strokes', 'TeamB_Strokes')];
-    }
-    let ptsA = 0, ptsB = 0;
-    segs.forEach((s) => { if (s.final) { ptsA += s.points.A; ptsB += s.points.B; } });
-    totalA += ptsA; totalB += ptsB;
-    const holesPlayed = countHolesPlayed(day, holeRows);
-    const pairA = `${lastName(row.TeamA_P1)} + ${lastName(row.TeamA_P2)}`;
-    const pairB = `${lastName(row.TeamB_P1)} + ${lastName(row.TeamB_P2)}`;
-    return `<tr>
-      <td class="lb-pts">${formatPts(ptsA)}</td>
-      <td class="lb-pair">${escapeHtml(pairA)}</td>
-      <td>${holesPlayed} / 18</td>
-      <td class="lb-pair">${escapeHtml(pairB)}</td>
-      <td class="lb-pts">${formatPts(ptsB)}</td>
-    </tr>`;
-  }).join('');
-
-  document.getElementById('lbBody').innerHTML = `
-    <div style="overflow-x:auto;">
-      <table class="lb-table">
-        <thead><tr><th>Points</th><th class="lb-pair-h">${escapeHtml(names.A)}</th><th>Holes Played</th><th class="lb-pair-h">${escapeHtml(names.B)}</th><th>Points</th></tr></thead>
-        <tbody>${rowsHtml || '<tr><td colspan="5" class="hint">No matches set up yet.</td></tr>'}</tbody>
-        ${rowsHtml ? `<tfoot><tr class="lb-total"><td>${formatPts(totalA)}</td><td>${escapeHtml(names.A)}</td><td>Total</td><td>${escapeHtml(names.B)}</td><td>${formatPts(totalB)}</td></tr></tfoot>` : ''}
-      </table>
-    </div>
-  `;
 }
 
 // ====================== LIVE SCORING ======================
@@ -706,9 +641,6 @@ async function saveCurrentMatch(day, matchNum, holes) {
   try {
     const res = await apiPost('saveMatchScores', { day, matchNum, holes: JSON.stringify(holes) });
     if (isCurrentlyViewed()) setSaveIndicator(res.success ? 'saved' : 'error', res.success ? 'Saved ✓' : res.error);
-    // Keep the leaderboard current after every save, not just on tab switch —
-    // only worth the extra fetch when it's actually showing this save's day.
-    if (res.success && document.getElementById('lbDay').value === String(day)) loadLeaderboard();
   } catch (err) {
     if (isCurrentlyViewed()) setSaveIndicator('error', 'Network error');
   }
@@ -1032,6 +964,14 @@ function renderLiveScorecard(day, matchNum) {
 // ====================== SCOREBOARD ======================
 document.getElementById('sbDay').addEventListener('change', loadScoreboard);
 
+// One compact badge per segment (e.g. "Captain's Choice: 3 up thru 5"),
+// reusing the same colored status-badge look as the Live Scoring status
+// lines — stacked in the leaderboard row's middle "Match" column.
+function lbxSegBadgeHtml(label, seg) {
+  const cls = seg.leader === 'A' ? 'a' : seg.leader === 'B' ? 'b' : seg.leader === 'Half' ? 'half' : 'pending';
+  return `<div class="lbx-seg"><span class="lbx-seg-label">${escapeHtml(label)}:</span> <span class="status-badge ${cls}">${escapeHtml(seg.text)}</span></div>`;
+}
+
 async function loadScoreboard() {
   const day = document.getElementById('sbDay').value;
   const res = await apiGet('getScores', { day });
@@ -1039,8 +979,11 @@ async function loadScoreboard() {
   if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
 
   const names = teamNames();
-  let totalA = 0, totalB = 0, decidedCount = 0, totalPossible = 0;
-  const cardsHtml = pairings[day].map((row) => {
+  let totalA = 0, totalB = 0;
+  const rowsHtml = (pairings[day] || []).map((row) => {
+    if (!hasPlayersLb(row)) {
+      return `<tr><td colspan="5" class="lbx-unset">Match ${escapeHtml(row.MatchNum)} — not set up yet</td></tr>`;
+    }
     const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
     let segs, segLabels;
     if (day === '2') {
@@ -1050,20 +993,40 @@ async function loadScoreboard() {
       segs = [computeDay1Segment(holeRows, 1, 9, 'TeamA_Strokes', 'TeamB_Strokes'), computeDay1Segment(holeRows, 10, 18, 'TeamA_Strokes', 'TeamB_Strokes')];
       segLabels = ["Captain's Choice", 'Modified Alternate Shot'];
     }
-    segs.forEach((s) => {
-      totalPossible += 1;
-      if (s.final) { totalA += s.points.A; totalB += s.points.B; decidedCount++; }
-    });
-    const lines = segs.map((s, i) => statusLineHtml(segLabels[i], s, names.A, names.B)).join('');
-    return `<div class="match-card"><div class="match-title">${escapeHtml(matchLabel(day, row))}</div>${lines}</div>`;
+    let ptsA = 0, ptsB = 0;
+    segs.forEach((s) => { if (s.final) { ptsA += s.points.A; ptsB += s.points.B; } });
+    totalA += ptsA; totalB += ptsB;
+    // Solid highlight once every segment in the match is final (mirrors the
+    // reference leaderboard's red "won" styling); a lighter tint just shows
+    // who's currently ahead while the match is still in progress.
+    const allFinal = segs.every((s) => s.final);
+    const aAhead = ptsA > ptsB, bAhead = ptsB > ptsA;
+    const leadClassA = aAhead ? (allFinal ? 'lbx-final-lead' : 'lbx-lead') : '';
+    const leadClassB = bAhead ? (allFinal ? 'lbx-final-lead' : 'lbx-lead') : '';
+    const tiedClass = (!aAhead && !bAhead && allFinal) ? 'lbx-tied' : '';
+    const pairA = `${lastName(row.TeamA_P1)} + ${lastName(row.TeamA_P2)}`;
+    const pairB = `${lastName(row.TeamB_P1)} + ${lastName(row.TeamB_P2)}`;
+    const segBadges = segs.map((s, i) => lbxSegBadgeHtml(segLabels[i], s)).join('');
+    return `<tr>
+      <td class="lbx-pts ${leadClassA} ${tiedClass}">${formatPts(ptsA)}</td>
+      <td class="lbx-pair ${leadClassA} ${tiedClass}"><div class="lbx-names">${escapeHtml(pairA)}</div><div class="lbx-matchnum">Match ${escapeHtml(row.MatchNum)}</div></td>
+      <td class="lbx-match">${segBadges}</td>
+      <td class="lbx-pair ${leadClassB} ${tiedClass}"><div class="lbx-names">${escapeHtml(pairB)}</div><div class="lbx-matchnum">Match ${escapeHtml(row.MatchNum)}</div></td>
+      <td class="lbx-pts ${leadClassB} ${tiedClass}">${formatPts(ptsB)}</td>
+    </tr>`;
   }).join('');
 
-  document.getElementById('sbTotals').innerHTML = `
-    <div class="pt"><div class="num">${totalA}</div><div class="lbl">${escapeHtml(names.A)}</div></div>
-    <div class="pt"><div class="num">${totalB}</div><div class="lbl">${escapeHtml(names.B)}</div></div>
-    <div class="pt"><div class="num">${decidedCount} / ${totalPossible}</div><div class="lbl">matches decided (Day ${day})</div></div>
+  document.getElementById('sbLeaderboard').innerHTML = `
+    <div class="lbx-wrap">
+      <table class="lbx-table">
+        <thead>
+          <tr class="lbx-head"><th>Points</th><th class="lbx-pair-h">${escapeHtml(names.A)}</th><th>Match</th><th class="lbx-pair-h">${escapeHtml(names.B)}</th><th>Points</th></tr>
+        </thead>
+        <tbody>${rowsHtml || `<tr><td colspan="5" class="hint">No matches set up yet.</td></tr>`}</tbody>
+        ${rowsHtml ? `<tfoot><tr class="lbx-total"><td>${formatPts(totalA)}</td><td class="lbx-pair-h">${escapeHtml(names.A)}</td><td>TOTAL</td><td class="lbx-pair-h">${escapeHtml(names.B)}</td><td>${formatPts(totalB)}</td></tr></tfoot>` : ''}
+      </table>
+    </div>
   `;
-  document.getElementById('sbMatches').innerHTML = cardsHtml || '<p class="hint">No matches set up yet.</p>';
 }
 
 // ====================== UTIL ======================
@@ -1077,7 +1040,6 @@ function escapeHtml(str) {
   await loadShared();
   populateMatchDropdown();
   await onScMatchSelected();
-  loadLeaderboard();
 })();
 </script>
 </body>
