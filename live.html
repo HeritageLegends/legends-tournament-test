@@ -203,7 +203,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-06k';
+const LIVE_VERSION = '2026-09-06l';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -374,7 +374,10 @@ function storePin(day, matchNum, pin) {
   try { localStorage.setItem(pinStorageKey(day, matchNum), pin); } catch (e) {}
 }
 function matchIsUnlocked(day, matchNum, pairingRow) {
-  const requiredPin = ((pairingRow && pairingRow.PIN) || '').trim();
+  // String(...) first: a PIN that's all digits (e.g. "0483") can come back from
+  // the Sheet as an actual number rather than text, and a number has no
+  // .trim() — this coercion keeps that from crashing the page either way.
+  const requiredPin = String((pairingRow && pairingRow.PIN) || '').trim();
   if (!requiredPin) return true; // no PIN set for this match — open to anyone
   return getStoredPin(day, matchNum) === requiredPin;
 }
@@ -491,7 +494,7 @@ function renderPinLock(day, matchNum, pairingRow) {
 function tryUnlockMatch(day, matchNum) {
   const entered = document.getElementById('matchPinInput').value.trim();
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
-  const requiredPin = ((pairingRow && pairingRow.PIN) || '').trim();
+  const requiredPin = String((pairingRow && pairingRow.PIN) || '').trim();
   if (entered && entered === requiredPin) {
     storePin(day, matchNum, entered);
     renderScoringUI(day, matchNum);
