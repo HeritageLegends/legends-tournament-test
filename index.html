@@ -278,7 +278,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-06f';
+const ADMIN_VERSION = '2026-09-06g';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -794,13 +794,14 @@ function strokesOnHolePrint(handicapIndex, strokeIndex) {
 // row that only covers one segment (e.g. Day 2's back-nine Match Play) isn't
 // meaningful for the other segment's holes; TOT is shaded unless the row
 // covers the full round, since a partial-segment tally has no round total.
-function wltCellsHtml(activeStart, activeEnd) {
+function wltCellsHtml(activeStart, activeEnd, startHoleNum) {
   const fullRange = activeStart === 1 && activeEnd === 18;
   let cells = '';
   for (let h = 1; h <= 18; h++) {
     const segClass = h === 10 ? 'seg' : '';
     const isActive = h >= activeStart && h <= activeEnd;
-    cells += `<td class="${segClass}${isActive ? '' : ' sc-na'}"></td>`;
+    const startClass = (isActive && h === startHoleNum) ? ' sc-start-hole' : '';
+    cells += `<td class="${segClass}${startClass}${isActive ? '' : ' sc-na'}"></td>`;
     if (h === 9) cells += `<td class="sc-sum${isActive ? '' : ' sc-na'}"></td>`;
     if (h === 18) cells += `<td class="sc-sum${isActive ? '' : ' sc-na'}"></td><td class="sc-sum${fullRange ? '' : ' sc-na'}"></td>`;
   }
@@ -899,9 +900,9 @@ function scorecardCardHtml(row, rosterList, isSample) {
     const segClass = h === 10 ? 'seg' : '';
     const startClass = h === startHoleNum ? ' sc-start-hole' : '';
     holeHeaderCells += `<th class="${segClass}${startClass}">${h}</th>`;
-    parCells += `<td class="${segClass}">${hh.Par || ''}</td>`;
-    hcpCells += `<td class="${segClass}">${hh.StrokeIndex || ''}</td>`;
-    hcpRedCells += `<td class="${segClass}">${hhRed.StrokeIndex || ''}</td>`;
+    parCells += `<td class="${segClass}${startClass}">${hh.Par || ''}</td>`;
+    hcpCells += `<td class="${segClass}${startClass}">${hh.StrokeIndex || ''}</td>`;
+    hcpRedCells += `<td class="${segClass}${startClass}">${hhRed.StrokeIndex || ''}</td>`;
     if (h === 9) { holeHeaderCells += '<th class="sc-sum">OUT</th>'; parCells += '<td class="sc-sum"></td>'; hcpCells += '<td class="sc-sum"></td>'; hcpRedCells += '<td class="sc-sum"></td>'; }
     if (h === 18) { holeHeaderCells += '<th class="sc-sum">IN</th><th class="sc-sum">TOT</th>'; parCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; hcpCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; hcpRedCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; }
   }
@@ -915,7 +916,8 @@ function scorecardCardHtml(row, rosterList, isSample) {
       const strokes = name ? strokesOnHolePrint(hc, si) : 0;
       const dots = strokes > 0 ? `<span class="sc-dots">${'&bull;'.repeat(strokes)}</span>` : '';
       const segClass = h === 10 ? 'seg' : '';
-      cells += `<td class="${segClass}">${dots}</td>`;
+      const startClass = h === startHoleNum ? ' sc-start-hole' : '';
+      cells += `<td class="${segClass}${startClass}">${dots}</td>`;
       if (h === 9) cells += '<td class="sc-sum"></td>';
       if (h === 18) cells += '<td class="sc-sum"></td><td class="sc-sum"></td>';
     }
@@ -927,9 +929,9 @@ function scorecardCardHtml(row, rosterList, isSample) {
   // Individual Match Play (back 9) is two separate 1-on-1s, so each gets its
   // own row. Each row only covers its own segment's holes — see wltCellsHtml.
   const wltRows = [
-    [`${escapeHtml(names.A)} vs ${escapeHtml(names.B)} — Best Ball`, wltCellsHtml(1, 9)],
-    [`${escapeHtml(row.MP1_TeamA || '?')} vs ${escapeHtml(row.MP1_TeamB || '?')}`, wltCellsHtml(10, 18)],
-    [`${escapeHtml(row.MP2_TeamA || '?')} vs ${escapeHtml(row.MP2_TeamB || '?')}`, wltCellsHtml(10, 18)],
+    [`${escapeHtml(names.A)} vs ${escapeHtml(names.B)} — Best Ball`, wltCellsHtml(1, 9, startHoleNum)],
+    [`${escapeHtml(row.MP1_TeamA || '?')} vs ${escapeHtml(row.MP1_TeamB || '?')}`, wltCellsHtml(10, 18, startHoleNum)],
+    [`${escapeHtml(row.MP2_TeamA || '?')} vs ${escapeHtml(row.MP2_TeamB || '?')}`, wltCellsHtml(10, 18, startHoleNum)],
   ].map(([label, cells]) => `<tr class="sc-wlt"><td class="sc-name">W/L/T &mdash; ${label}</td>${cells}</tr>`).join('');
 
   return `
@@ -975,7 +977,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
     const segClass = h === 10 ? 'seg' : '';
     const startClass = h === startHoleNum ? ' sc-start-hole' : '';
     holeHeaderCells += `<th class="${segClass}${startClass}">${h}</th>`;
-    parCells += `<td class="${segClass}">${hh.Par || ''}</td>`;
+    parCells += `<td class="${segClass}${startClass}">${hh.Par || ''}</td>`;
     if (h === 9) { holeHeaderCells += '<th class="sc-sum">OUT</th>'; parCells += '<td class="sc-sum"></td>'; }
     if (h === 18) { holeHeaderCells += '<th class="sc-sum">IN</th><th class="sc-sum">TOT</th>'; parCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; }
   }
@@ -986,7 +988,8 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
     let cells = '';
     for (let h = 1; h <= 18; h++) {
       const segClass = h === 10 ? 'seg' : '';
-      cells += `<td class="${segClass}"></td>`;
+      const startClass = h === startHoleNum ? ' sc-start-hole' : '';
+      cells += `<td class="${segClass}${startClass}"></td>`;
       if (h === 9) cells += '<td class="sc-sum"></td>';
       if (h === 18) cells += '<td class="sc-sum"></td><td class="sc-sum"></td>';
     }
@@ -996,7 +999,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
       return p && p.Tee ? `${escapeHtml(name)} (${escapeHtml(p.Tee)})` : escapeHtml(name);
     };
     const playersHtml = (p1 || p2) ? ` <span class="sc-tee">(${nameWithTee(p1)} / ${nameWithTee(p2)})</span>` : '';
-    const wltCells = wltCellsHtml(1, 18);
+    const wltCells = wltCellsHtml(1, 18, startHoleNum);
     return `<tr><td class="sc-name">${escapeHtml(teamName)}${playersHtml}</td>${cells}</tr>
       <tr class="sc-wlt"><td class="sc-name">W / L / T</td>${wltCells}</tr>`;
   }).join('');
