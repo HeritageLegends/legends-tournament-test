@@ -226,23 +226,11 @@
     <section id="tab-holehc" class="tab-panel" hidden>
       <div class="card">
         <h2>Hole Handicaps</h2>
-        <p class="hint">Stroke Index ranks each hole 1 (hardest) to 18 (easiest) — this is what Day 2's Live Scoring page uses to work out net scores from each player's Handicap Index on the Roster tab. Par is optional, just for reference. This only needs to be set once per course/tee setup.</p>
+        <p class="hint">Stroke Index ranks each hole 1 (hardest) to 18 (easiest) — this is what Day 2's Live Scoring page uses to work out net scores from each player's Handicap Index on the Roster tab. Red tees play to a different Stroke Index than every other tee on this course, so there's a separate column just for them: any Roster player whose Tee is "Red" gets strokes from that column instead, everyone else (Gold, White, Blue, etc.) uses the regular Stroke Index column. Par is optional, just for reference, and doesn't change by tee. This table is set once per course/tee setup and shouldn't need changing after that — if it ever does (a new course, a corrected number), edit it directly in the Google Sheet's <code>HoleHandicaps</code> / <code>HoleHandicapsRed</code> tabs rather than here.</p>
         <table>
-          <thead><tr><th style="width:80px;">Hole</th><th>Stroke Index (1–18, each used once)</th><th style="width:120px;">Par</th></tr></thead>
+          <thead><tr><th style="width:70px;">Hole</th><th>Stroke Index</th><th>Red Stroke Index</th><th style="width:90px;">Par</th></tr></thead>
           <tbody id="holeHcBody"></tbody>
         </table>
-        <button class="primary" onclick="saveHoleHandicaps()" style="margin-top:16px;">Save Hole Handicaps</button>
-        <div id="holeHcStatus" class="status"></div>
-      </div>
-      <div class="card" style="margin-top:16px;">
-        <h2>Red Tee Stroke Index</h2>
-        <p class="hint">Red tees play to a different Stroke Index than every other tee on this course, so this is a separate table just for them. Any Roster player whose Tee is "Red" gets strokes from this table instead of the one above — everyone else (Gold, White, Blue, etc.) keeps using the table above. Par doesn't change by tee, so there's no Par column here.</p>
-        <table>
-          <thead><tr><th style="width:80px;">Hole</th><th>Red Stroke Index (1–18, each used once)</th></tr></thead>
-          <tbody id="holeHcRedBody"></tbody>
-        </table>
-        <button class="primary" onclick="saveHoleHandicapsRed()" style="margin-top:16px;">Save Red Stroke Index</button>
-        <div id="holeHcRedStatus" class="status"></div>
       </div>
     </section>
 
@@ -290,7 +278,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-06a';
+const ADMIN_VERSION = '2026-09-06b';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -410,114 +398,43 @@ async function init() {
     roster = rosterRes.data;
     renderRoster();
   }
-  if (hcRes.success) {
-    holeHandicaps = hcRes.data.length ? hcRes.data : defaultHoleHandicapRows();
-    renderHoleHandicaps();
-  }
-  if (hcRedRes.success) {
-    holeHandicapsRed = hcRedRes.data.length ? hcRedRes.data : defaultHoleHandicapRedRows();
-    renderHoleHandicapsRed();
-  }
+  if (hcRes.success) holeHandicaps = hcRes.data.length ? hcRes.data : defaultHoleHandicapRows();
+  if (hcRedRes.success) holeHandicapsRed = hcRedRes.data.length ? hcRedRes.data : defaultHoleHandicapRedRows();
+  renderHoleHandicaps();
   await Promise.all([loadPairings('1'), loadPairings('2')]);
 }
 
 // ====================== HOLE HANDICAPS TAB ======================
+// Read-only display, combining the regular and Red Stroke Index tables into
+// one row per hole. Set once per course/tee setup and not expected to change
+// after that — edit the HoleHandicaps / HoleHandicapsRed tabs directly in the
+// Google Sheet if it ever needs to (see strokeIndexForTee for how each is used).
 function defaultHoleHandicapRows() {
   const rows = [];
   for (let h = 1; h <= 18; h++) rows.push({ Hole: h, StrokeIndex: '', Par: '' });
   return rows;
 }
-
-function renderHoleHandicaps() {
-  const body = document.getElementById('holeHcBody');
-  body.innerHTML = '';
-  holeHandicaps.forEach((row, idx) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="match-label">Hole ${row.Hole}${row.Hole == 9 || row.Hole == 18 ? ' <span class="hint">(' + (row.Hole == 9 ? 'end of front 9' : 'end of back 9') + ')</span>' : ''}</td>
-      <td><input type="number" min="1" max="18" value="${row.StrokeIndex}" data-idx="${idx}" data-field="StrokeIndex" style="width:100px;"></td>
-      <td><input type="number" min="3" max="6" value="${row.Par || ''}" data-idx="${idx}" data-field="Par" style="width:80px;"></td>
-    `;
-    tr.querySelectorAll('input').forEach((el) => {
-      el.addEventListener('change', (e) => {
-        holeHandicaps[idx][e.target.dataset.field] = e.target.value;
-      });
-    });
-    body.appendChild(tr);
-  });
-}
-
-async function saveHoleHandicaps() {
-  const indices = holeHandicaps.map((r) => String(r.StrokeIndex)).filter((v) => v !== '');
-  const seen = {};
-  let dup = null;
-  indices.forEach((v) => { if (seen[v]) dup = v; seen[v] = true; });
-  if (dup) {
-    showStatus('holeHcStatus', false, `Stroke Index ${dup} is used more than once — each hole needs a unique value 1–18.`);
-    return;
-  }
-  try {
-    const res = await apiPost('saveHoleHandicaps', { holeHandicaps: JSON.stringify(holeHandicaps) });
-    if (res.success) {
-      holeHandicaps = res.data;
-      renderHoleHandicaps();
-      const filled = holeHandicaps.filter((r) => r.StrokeIndex !== '' && r.StrokeIndex != null).length;
-      showStatus('holeHcStatus', true, filled === 18 ? 'Saved — all 18 holes set.' : `Saved (${filled} of 18 holes set so far).`);
-    } else {
-      showStatus('holeHcStatus', false, res.error);
-    }
-  } catch (err) {
-    showStatus('holeHcStatus', false, 'Network error: ' + err.message);
-  }
-}
-
-// ---- Red tee Stroke Index (separate table — see strokeIndexForTee) ----
 function defaultHoleHandicapRedRows() {
   const rows = [];
   for (let h = 1; h <= 18; h++) rows.push({ Hole: h, StrokeIndex: '' });
   return rows;
 }
 
-function renderHoleHandicapsRed() {
-  const body = document.getElementById('holeHcRedBody');
+function renderHoleHandicaps() {
+  const body = document.getElementById('holeHcBody');
   if (!body) return;
   body.innerHTML = '';
-  holeHandicapsRed.forEach((row, idx) => {
+  for (let h = 1; h <= 18; h++) {
+    const row = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
+    const redRow = holeHandicapsRed.find((r) => Number(r.Hole) === h) || {};
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="match-label">Hole ${row.Hole}${row.Hole == 9 || row.Hole == 18 ? ' <span class="hint">(' + (row.Hole == 9 ? 'end of front 9' : 'end of back 9') + ')</span>' : ''}</td>
-      <td><input type="number" min="1" max="18" value="${row.StrokeIndex}" data-idx="${idx}" data-field="StrokeIndex" style="width:100px;"></td>
+      <td class="match-label">Hole ${h}${h === 9 || h === 18 ? ' <span class="hint">(' + (h === 9 ? 'end of front 9' : 'end of back 9') + ')</span>' : ''}</td>
+      <td>${row.StrokeIndex || ''}</td>
+      <td>${redRow.StrokeIndex || ''}</td>
+      <td>${row.Par || ''}</td>
     `;
-    tr.querySelectorAll('input').forEach((el) => {
-      el.addEventListener('change', (e) => {
-        holeHandicapsRed[idx][e.target.dataset.field] = e.target.value;
-      });
-    });
     body.appendChild(tr);
-  });
-}
-
-async function saveHoleHandicapsRed() {
-  const indices = holeHandicapsRed.map((r) => String(r.StrokeIndex)).filter((v) => v !== '');
-  const seen = {};
-  let dup = null;
-  indices.forEach((v) => { if (seen[v]) dup = v; seen[v] = true; });
-  if (dup) {
-    showStatus('holeHcRedStatus', false, `Stroke Index ${dup} is used more than once — each hole needs a unique value 1–18.`);
-    return;
-  }
-  try {
-    const res = await apiPost('saveHoleHandicapsRed', { holeHandicapsRed: JSON.stringify(holeHandicapsRed) });
-    if (res.success) {
-      holeHandicapsRed = res.data;
-      renderHoleHandicapsRed();
-      const filled = holeHandicapsRed.filter((r) => r.StrokeIndex !== '' && r.StrokeIndex != null).length;
-      showStatus('holeHcRedStatus', true, filled === 18 ? 'Saved — all 18 holes set.' : `Saved (${filled} of 18 holes set so far).`);
-    } else {
-      showStatus('holeHcRedStatus', false, res.error);
-    }
-  } catch (err) {
-    showStatus('holeHcRedStatus', false, 'Network error: ' + err.message);
   }
 }
 
