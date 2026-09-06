@@ -278,7 +278,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-06d';
+const ADMIN_VERSION = '2026-09-06f';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -806,6 +806,22 @@ function wltCellsHtml(activeStart, activeEnd) {
   }
   return cells;
 }
+// A row above the hole-number header labeling each 9 by its format (e.g.
+// "Front 9: Captain's Choice" / "Back 9: Modified Alternate Shot"). Column
+// counts match holeHeaderCells: holes 1-9 + OUT = 10 columns, holes 10-18 +
+// IN + TOT = 11 columns, plus the leading name column.
+function segmentHeaderRowHtml(frontLabel, backLabel) {
+  return `<tr class="sc-segrow"><th class="sc-name"></th><th colspan="10">${escapeHtml(frontLabel)}</th><th colspan="11">${escapeHtml(backLabel)}</th></tr>`;
+}
+// Pulls the leading hole number out of a Start Hole value like "18a" or "18b"
+// (or a plain "5") so that hole's header box can be highlighted — returns
+// null for blank/unrecognized values, which just means no highlight.
+function startHoleNumberOf(startHole) {
+  const m = String(startHole || '').match(/^\s*(\d{1,2})/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return (n >= 1 && n <= 18) ? n : null;
+}
 function hasPlayers(row) {
   return !!(row.TeamA_P1 || row.TeamA_P2 || row.TeamB_P1 || row.TeamB_P2);
 }
@@ -847,6 +863,8 @@ const PRINT_CSS = `
   tr.sc-wlt td { border-top: none; }
   tr.sc-wlt td.sc-name { font-style: italic; color: #666; font-weight: 400; font-size: 0.85em; padding-top: 1px; padding-bottom: 6px; }
   .sc-na { background: #ececec; }
+  .sc-start-hole { background: #fff176; }
+  tr.sc-segrow th { background: #e4e4e4; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; text-align: center; }
   .seg { border-left: 2px solid #333; }
   .sc-note { font-size: 0.78rem; color: #555; margin-top: 10px; }
   .sc-sample-badge { display: inline-block; background: #fff3cd; color: #7a5b00; border: 1px solid #e6c866; border-radius: 4px; padding: 3px 10px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em; margin-bottom: 8px; }
@@ -870,6 +888,7 @@ function scorecardCardHtml(row, rosterList, isSample) {
     const p = rosterList.find((r) => r.Name === name);
     return p && (p.Tee || '').trim().toLowerCase() === 'red';
   });
+  const startHoleNum = startHoleNumberOf(row.StartHole);
   let holeHeaderCells = '';
   let parCells = '';
   let hcpCells = '';
@@ -878,7 +897,8 @@ function scorecardCardHtml(row, rosterList, isSample) {
     const hh = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
     const hhRed = holeHandicapsRed.find((r) => Number(r.Hole) === h) || {};
     const segClass = h === 10 ? 'seg' : '';
-    holeHeaderCells += `<th class="${segClass}">${h}</th>`;
+    const startClass = h === startHoleNum ? ' sc-start-hole' : '';
+    holeHeaderCells += `<th class="${segClass}${startClass}">${h}</th>`;
     parCells += `<td class="${segClass}">${hh.Par || ''}</td>`;
     hcpCells += `<td class="${segClass}">${hh.StrokeIndex || ''}</td>`;
     hcpRedCells += `<td class="${segClass}">${hhRed.StrokeIndex || ''}</td>`;
@@ -919,7 +939,10 @@ function scorecardCardHtml(row, rosterList, isSample) {
       <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
       <table class="sc-table">
-        <thead><tr><th class="sc-name">Player</th>${holeHeaderCells}</tr></thead>
+        <thead>
+          ${segmentHeaderRowHtml("Front 9: Best Ball", "Back 9: Individual Match Play")}
+          <tr><th class="sc-name">Player</th>${holeHeaderCells}</tr>
+        </thead>
         <tbody>
           ${hasPar ? `<tr class="sc-meta"><td class="sc-name">Par</td>${parCells}</tr>` : ''}
           <tr class="sc-meta"><td class="sc-name">Hcp</td>${hcpCells}</tr>
@@ -944,12 +967,14 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
   rosterList = rosterList || roster;
   const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
   const hasPar = holeHandicaps.some((h) => h.Par !== '' && h.Par != null);
+  const startHoleNum = startHoleNumberOf(row.StartHole);
   let holeHeaderCells = '';
   let parCells = '';
   for (let h = 1; h <= 18; h++) {
     const hh = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
     const segClass = h === 10 ? 'seg' : '';
-    holeHeaderCells += `<th class="${segClass}">${h}</th>`;
+    const startClass = h === startHoleNum ? ' sc-start-hole' : '';
+    holeHeaderCells += `<th class="${segClass}${startClass}">${h}</th>`;
     parCells += `<td class="${segClass}">${hh.Par || ''}</td>`;
     if (h === 9) { holeHeaderCells += '<th class="sc-sum">OUT</th>'; parCells += '<td class="sc-sum"></td>'; }
     if (h === 18) { holeHeaderCells += '<th class="sc-sum">IN</th><th class="sc-sum">TOT</th>'; parCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; }
@@ -983,7 +1008,10 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
       <div class="sc-sub">Day 1 &mdash; ${escapeHtml(formatDateNice(settings.Day1Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
       <table class="sc-table">
-        <thead><tr><th class="sc-name">Team</th>${holeHeaderCells}</tr></thead>
+        <thead>
+          ${segmentHeaderRowHtml("Front 9: Captain's Choice", "Back 9: Modified Alternate Shot")}
+          <tr><th class="sc-name">Team</th>${holeHeaderCells}</tr>
+        </thead>
         <tbody>
           ${hasPar ? `<tr class="sc-meta"><td class="sc-name">Par</td>${parCells}</tr>` : ''}
           ${teamRows}
