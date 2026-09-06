@@ -203,7 +203,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-06f';
+const LIVE_VERSION = '2026-09-06g';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -1062,29 +1062,53 @@ function loadScoreboard() {
   return loadLeaderboardView(day);
 }
 
-// One compact badge per segment (e.g. "Captain's Choice: 3 up thru 5"),
-// reusing the same colored status-badge look as the Live Scoring status
-// lines — stacked in the leaderboard row's middle "Match" column.
-function lbxSegBadgeHtml(label, seg) {
+// Last names of a two-player pairing, joined like the pairing columns
+// elsewhere on the leaderboard (e.g. "Stewart + Davis").
+function pairName(p1, p2) {
+  return `${lastName(p1)} + ${lastName(p2)}`;
+}
+// Splices the leading side's name into a segment's status text, right before
+// the margin — "Final — 2 up" becomes "Final — Stewart + Davis 2 up", "2 up
+// thru 5" becomes "Rich 2 up thru 5". Halved/all-square/not-started have no
+// one to name, so those pass through unchanged.
+function segStatusTextWithName(seg, aName, bName) {
+  if (seg.leader !== 'A' && seg.leader !== 'B') return seg.text;
+  const leadName = seg.leader === 'A' ? aName : bName;
+  return seg.text.replace(/(\d+ up)/, `${leadName} $1`);
+}
+// One compact badge per segment (e.g. "Captain's Choice: Final — Stewart +
+// Davis 2 up"), reusing the same colored status-badge look as the Live
+// Scoring status lines — stacked in the leaderboard row's middle "Match"
+// column.
+function lbxSegBadgeHtml(label, seg, aName, bName) {
   const cls = seg.leader === 'A' ? 'a' : seg.leader === 'B' ? 'b' : seg.leader === 'Half' ? 'half' : 'pending';
-  return `<div class="lbx-seg"><span class="lbx-seg-label">${escapeHtml(label)}:</span> <span class="status-badge ${cls}">${escapeHtml(seg.text)}</span></div>`;
+  const text = segStatusTextWithName(seg, aName, bName);
+  return `<div class="lbx-seg"><span class="lbx-seg-label">${escapeHtml(label)}:</span> <span class="status-badge ${cls}">${escapeHtml(text)}</span></div>`;
 }
 // Per-match segment breakdown, shared by the per-day leaderboard and the
 // Tournament Total's day-by-day totals — returns each segment's result plus
-// that match's points, without touching the DOM.
+// that match's points, without touching the DOM. segNames pairs with segs/
+// segLabels — the [A-side name, B-side name] to use when naming who's up.
 function matchSegmentInfo(day, row, scoresByMatch) {
   const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
-  let segs, segLabels;
+  let segs, segLabels, segNames;
   if (day === '2') {
     segs = [computeDay2BestBall(row, holeRows), computeDay2MatchPlay(row, holeRows, 1), computeDay2MatchPlay(row, holeRows, 2)];
     segLabels = ['Best Ball', `${lastName(row.MP1_TeamA)} vs ${lastName(row.MP1_TeamB)}`, `${lastName(row.MP2_TeamA)} vs ${lastName(row.MP2_TeamB)}`];
+    segNames = [
+      [pairName(row.TeamA_P1, row.TeamA_P2), pairName(row.TeamB_P1, row.TeamB_P2)],
+      [lastName(row.MP1_TeamA), lastName(row.MP1_TeamB)],
+      [lastName(row.MP2_TeamA), lastName(row.MP2_TeamB)],
+    ];
   } else {
     segs = [computeDay1Segment(holeRows, 1, 9, 'TeamA_Strokes', 'TeamB_Strokes'), computeDay1Segment(holeRows, 10, 18, 'TeamA_Strokes', 'TeamB_Strokes')];
     segLabels = ["Captain's Choice", 'Modified Alternate Shot'];
+    const pairA = pairName(row.TeamA_P1, row.TeamA_P2), pairB = pairName(row.TeamB_P1, row.TeamB_P2);
+    segNames = [[pairA, pairB], [pairA, pairB]];
   }
   let ptsA = 0, ptsB = 0;
   segs.forEach((s) => { if (s.final) { ptsA += s.points.A; ptsB += s.points.B; } });
-  return { holeRows, segs, segLabels, ptsA, ptsB };
+  return { holeRows, segs, segLabels, segNames, ptsA, ptsB };
 }
 
 async function loadLeaderboardView(day) {
@@ -1098,7 +1122,7 @@ async function loadLeaderboardView(day) {
     if (!hasPlayersLb(row)) {
       return `<tr><td colspan="5" class="lbx-unset">Match ${escapeHtml(row.MatchNum)} — not set up yet</td></tr>`;
     }
-    const { segs, segLabels, ptsA, ptsB } = matchSegmentInfo(day, row, scoresByMatch);
+    const { segs, segLabels, segNames, ptsA, ptsB } = matchSegmentInfo(day, row, scoresByMatch);
     totalA += ptsA; totalB += ptsB;
     // Solid highlight once every segment in the match is final (mirrors the
     // reference leaderboard's red "won" styling); a lighter tint just shows
@@ -1110,7 +1134,7 @@ async function loadLeaderboardView(day) {
     const tiedClass = (!aAhead && !bAhead && allFinal) ? 'lbx-tied' : '';
     const pairA = `${lastName(row.TeamA_P1)} + ${lastName(row.TeamA_P2)}`;
     const pairB = `${lastName(row.TeamB_P1)} + ${lastName(row.TeamB_P2)}`;
-    const segBadges = segs.map((s, i) => lbxSegBadgeHtml(segLabels[i], s)).join('');
+    const segBadges = segs.map((s, i) => lbxSegBadgeHtml(segLabels[i], s, segNames[i][0], segNames[i][1])).join('');
     return `<tr>
       <td class="lbx-pts ${leadClassA} ${tiedClass}">${formatPts(ptsA)}</td>
       <td class="lbx-pair ${leadClassA} ${tiedClass}"><div class="lbx-names">${escapeHtml(pairA)}</div><div class="lbx-matchnum">Match ${escapeHtml(row.MatchNum)}</div></td>
