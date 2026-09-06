@@ -203,7 +203,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-06j';
+const LIVE_VERSION = '2026-09-06k';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -1059,7 +1059,7 @@ function renderLiveScorecard(day, matchNum) {
   const names = teamNames();
   wrap.innerHTML = `
     <h2 style="margin-top:0;">Match Scorecard</h2>
-    <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(pairingRow.StartHole || 'TBD')} &middot; Tee: ${escapeHtml(pairingRow.Tee || 'TBD')}</div>
+    <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(pairingRow.StartHole || 'TBD')}</div>
     ${scorecardHtmlForMatch(day, pairingRow, currentHoles)}
   `;
 }
@@ -1295,7 +1295,7 @@ async function loadScorecardsView(day) {
       const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
       return `<div class="scorecard-block">
         <h3 style="margin-bottom:2px;">${escapeHtml(matchLabel(day, row))}</h3>
-        <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &middot; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
+        <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
         ${scorecardHtmlForMatch(day, row, holeRows)}
       </div>`;
     }).join('');

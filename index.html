@@ -191,7 +191,7 @@
         <p class="hint">Each match is 2 players per team. Use placeholder matchups now — everything here is editable later once captains set real pairings. Start Hole accepts plain text, so if the pro shop doubles up a hole for the shotgun (two groups starting from the same tee, a few minutes apart), enter it as e.g. "18a" and "18b" — this is just for the pairing sheet/scorecard and doesn't affect any scoring.</p>
         <table>
           <thead>
-            <tr><th></th><th colspan="2" id="day1TeamAHeader">Team A</th><th colspan="2" id="day1TeamBHeader">Team B</th><th>Start Hole</th><th>Tee</th><th>Scorekeeper PIN</th></tr>
+            <tr><th></th><th colspan="2" id="day1TeamAHeader">Team A</th><th colspan="2" id="day1TeamBHeader">Team B</th><th>Start Hole</th><th>Scorekeeper PIN</th></tr>
           </thead>
           <tbody id="day1Body"></tbody>
         </table>
@@ -211,7 +211,7 @@
         <p class="hint">Best Ball uses the same 2-vs-2 foursome as the match below. For the back-nine Individual Match Play, pick which player from each team faces which — defaults to Player 1 vs Player 1 and Player 2 vs Player 2. Start Hole accepts plain text, so a doubled-up shotgun hole can be entered as e.g. "18a" and "18b" — display only, doesn't affect scoring.</p>
         <table>
           <thead>
-            <tr><th></th><th colspan="2" id="day2TeamAHeader">Team A</th><th colspan="2" id="day2TeamBHeader">Team B</th><th>Start Hole</th><th>Tee</th><th>Scorekeeper PIN</th></tr>
+            <tr><th></th><th colspan="2" id="day2TeamAHeader">Team A</th><th colspan="2" id="day2TeamBHeader">Team B</th><th>Start Hole</th><th>Scorekeeper PIN</th></tr>
           </thead>
           <tbody id="day2Body"></tbody>
         </table>
@@ -282,7 +282,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-06k';
+const ADMIN_VERSION = '2026-09-06l';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -670,9 +670,9 @@ function defaultPairingRows(day) {
   const rows = [];
   for (let m = 1; m <= 9; m++) {
     if (day === '2' || day === 2) {
-      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '', Tee: '', PIN: '', MP1_TeamA: '', MP1_TeamB: '', MP2_TeamA: '', MP2_TeamB: '', MPSwapped: false });
+      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '', PIN: '', MP1_TeamA: '', MP1_TeamB: '', MP2_TeamA: '', MP2_TeamB: '', MPSwapped: false });
     } else {
-      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '', Tee: '', PIN: '' });
+      rows.push({ MatchNum: m, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '', PIN: '' });
     }
   }
   return rows;
@@ -709,7 +709,6 @@ function pairingRowEl(day, row, idx) {
     <td>${playerSelect(row.TeamB_P1, 'B', `${base} data-field="TeamB_P1"`)}</td>
     <td>${playerSelect(row.TeamB_P2, 'B', `${base} data-field="TeamB_P2"`)}</td>
     <td><input type="text" value="${escapeAttr(row.StartHole || '')}" ${base} data-field="StartHole" placeholder="e.g. 18a" style="width:70px;"></td>
-    <td><input type="text" value="${escapeAttr(row.Tee || '')}" ${base} data-field="Tee" style="width:80px;"></td>
     <td>
       <input type="text" value="${escapeAttr(row.PIN || '')}" ${base} data-field="PIN" maxlength="8" placeholder="open" style="width:70px;">
       <button type="button" class="link" data-genpin-idx="${idx}" style="font-size:0.75rem; padding:0;">generate</button>
@@ -983,7 +982,7 @@ function scorecardCardHtml(row, rosterList, isSample) {
     <div class="scorecard">
       ${isSample ? '<div class="sc-sample-badge">SAMPLE — for layout preview only, not a real match</div>' : ''}
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
-      <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
+      <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
       ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
       <table class="sc-table">
@@ -1055,7 +1054,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
     <div class="scorecard">
       ${isSample ? '<div class="sc-sample-badge">SAMPLE — for layout preview only, not a real match</div>' : ''}
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
-      <div class="sc-sub">Day 1 &mdash; ${escapeHtml(formatDateNice(settings.Day1Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &nbsp;&middot;&nbsp; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
+      <div class="sc-sub">Day 1 &mdash; ${escapeHtml(formatDateNice(settings.Day1Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
       ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
       <table class="sc-table">
@@ -1076,7 +1075,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
 // Shows one made-up match so you can check the layout before real pairings
 // exist yet for the selected day — Day 2 uses whatever's actually in the
 // Hole Handicaps table (real Stroke Index/Par if you've entered them, blank
-// otherwise), but the players, their handicaps, and the tee are fictional.
+// otherwise), but the players and their handicaps are fictional.
 function printSampleScorecard() {
   const day = document.getElementById('printDaySelect').value;
   let cardHtml;
@@ -1089,7 +1088,7 @@ function printSampleScorecard() {
     ];
     const sampleRow = {
       MatchNum: '1', TeamA_P1: 'Sample Player A1', TeamA_P2: 'Sample Player A2',
-      TeamB_P1: 'Sample Player B1', TeamB_P2: 'Sample Player B2', StartHole: '1', Tee: 'White',
+      TeamB_P1: 'Sample Player B1', TeamB_P2: 'Sample Player B2', StartHole: '1',
     };
     cardHtml = scorecardCardHtmlDay1(sampleRow, sampleRosterDay1, true);
   } else {
@@ -1101,7 +1100,7 @@ function printSampleScorecard() {
     ];
     const sampleRow = {
       MatchNum: '1', TeamA_P1: 'Sample Player A1', TeamA_P2: 'Sample Player A2',
-      TeamB_P1: 'Sample Player B1', TeamB_P2: 'Sample Player B2', StartHole: '18b', Tee: 'Gold / Red',
+      TeamB_P1: 'Sample Player B1', TeamB_P2: 'Sample Player B2', StartHole: '18b',
     };
     cardHtml = scorecardCardHtml(sampleRow, sampleRoster, true);
   }
