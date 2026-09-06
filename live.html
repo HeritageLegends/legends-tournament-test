@@ -203,7 +203,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-06g';
+const LIVE_VERSION = '2026-09-06h';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -800,6 +800,16 @@ function playerHandicap(name) {
   const p = rosterByName[name];
   return p ? p.HandicapIndex : '';
 }
+// Which individual Match Play slot (1 or 2) a player is in — Team A's is
+// always fixed (P1→MP1, P2→MP2), but "swap opponents" in admin can move
+// either Team B player into either slot, so look it up from the actual
+// MP fields rather than assuming.
+function mpNumForPlayer(pairingRow, name) {
+  if (!name) return null;
+  if (name === pairingRow.MP1_TeamA || name === pairingRow.MP1_TeamB) return 1;
+  if (name === pairingRow.MP2_TeamA || name === pairingRow.MP2_TeamB) return 2;
+  return null;
+}
 
 // ====================== LIVE SCORECARD REPLICA ======================
 // A read-only, on-screen version of the printed scorecard (see index.html's
@@ -901,7 +911,7 @@ function scorecardHtmlForMatch(day, pairingRow, holeRows) {
     if (h === 18) { holeHeaderCells += '<th class="sc-sum">IN</th><th class="sc-sum">TOT</th>'; parCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; }
   }
 
-  let headLabel, hcpRowsHtml = '', bodyHtml, wltRowsHtml = '', noteHtml, rowHeadLabel;
+  let headLabel, hcpRowsHtml = '', bodyHtml, noteHtml, rowHeadLabel;
   if (day === '2') {
     rowHeadLabel = 'Player';
     const players = [
@@ -920,7 +930,7 @@ function scorecardHtmlForMatch(day, pairingRow, holeRows) {
     }
     hcpRowsHtml = `<tr class="sc-meta"><td class="sc-name">Hcp</td>${hcpCells}</tr>${anyRed ? `<tr class="sc-meta"><td class="sc-name">Hcp (Red)</td>${hcpRedCells}</tr>` : ''}`;
 
-    bodyHtml = players.map(([field, name]) => {
+    const playerRowHtml = (field, name) => {
       const tee = playerTee(name);
       const hc = playerHandicap(name);
       let cells = '', out = 0, hasOut = false, inn = 0, hasIn = false;
@@ -940,16 +950,30 @@ function scorecardHtmlForMatch(day, pairingRow, holeRows) {
       }
       const teeHtml = tee ? ` <span class="sc-tee">(${escapeHtml(tee)})</span>` : '';
       return `<tr><td class="sc-name">${escapeHtml(name || '(unassigned)')}${teeHtml}</td>${cells}</tr>`;
-    }).join('');
+    };
 
     const bbResults = day2BestBallPerHoleResults(pairingRow, holeRows);
-    const mp1Results = day2MatchPlayPerHoleResults(pairingRow, holeRows, 1);
-    const mp2Results = day2MatchPlayPerHoleResults(pairingRow, holeRows, 2);
-    wltRowsHtml = [
-      [`${escapeHtml(names.A)} vs ${escapeHtml(names.B)} — Best Ball`, bbResults, 1, 9],
-      [`${escapeHtml(pairingRow.MP1_TeamA || '?')} vs ${escapeHtml(pairingRow.MP1_TeamB || '?')}`, mp1Results, 10, 18],
-      [`${escapeHtml(pairingRow.MP2_TeamA || '?')} vs ${escapeHtml(pairingRow.MP2_TeamB || '?')}`, mp2Results, 10, 18],
-    ].map(([label, results, start, end]) => `<tr class="sc-wlt"><td class="sc-name">W/L/T &mdash; ${label}</td>${wltResultCellsHtml(results, start, end, startHoleNum, 'A')}</tr>`).join('');
+    const resultsByMp = { 1: day2MatchPlayPerHoleResults(pairingRow, holeRows, 1), 2: day2MatchPlayPerHoleResults(pairingRow, holeRows, 2) };
+
+    // Each team's block is its own two player rows followed by its own three
+    // W/L/T rows (Best Ball, then one Match Play row per player), each shown
+    // from that team's own perspective — a team's Match Play row uses
+    // whichever MP number that specific player is actually in, since "swap
+    // opponents" in admin can put either player in MP1 or MP2.
+    const teamBlockHtml = (teamName, f1, p1, f2, p2, perspective) => {
+      const mp1 = mpNumForPlayer(pairingRow, p1) || 1;
+      const mp2 = mpNumForPlayer(pairingRow, p2) || 2;
+      const wltRows = [
+        [`${escapeHtml(teamName)} - Best Ball`, wltResultCellsHtml(bbResults, 1, 9, startHoleNum, perspective)],
+        [`${escapeHtml(teamName)} - Match Play - ${escapeHtml(lastName(p1))}`, wltResultCellsHtml(resultsByMp[mp1], 10, 18, startHoleNum, perspective)],
+        [`${escapeHtml(teamName)} - Match Play - ${escapeHtml(lastName(p2))}`, wltResultCellsHtml(resultsByMp[mp2], 10, 18, startHoleNum, perspective)],
+      ].map(([label, cells]) => `<tr class="sc-wlt"><td class="sc-name">W/L/T &mdash; ${label}</td>${cells}</tr>`).join('');
+      return `${playerRowHtml(f1, p1)}${playerRowHtml(f2, p2)}${wltRows}`;
+    };
+    const spacerRow = '<tr class="sc-spacer"><td colspan="22" style="border:none; padding:6px 0;"></td></tr>';
+    bodyHtml = teamBlockHtml(names.A, 'TeamA_P1_Gross', pairingRow.TeamA_P1, 'TeamA_P2_Gross', pairingRow.TeamA_P2, 'A')
+      + spacerRow
+      + teamBlockHtml(names.B, 'TeamB_P1_Gross', pairingRow.TeamB_P1, 'TeamB_P2_Gross', pairingRow.TeamB_P2, 'B');
 
     headLabel = segmentHeaderRowHtml("Front 9: Best Ball", "Back 9: Individual Match Play");
     noteHtml = `Each player's dots use their own tee's Stroke Index${anyRed ? ' (Red players: "Hcp (Red)" row, everyone else: "Hcp")' : ''}. W/L/T rows update live as scores come in.`;
@@ -984,7 +1008,7 @@ function scorecardHtmlForMatch(day, pairingRow, holeRows) {
       const wltCells = wltResultCellsHtml(fullResults, 1, 18, startHoleNum, perspective);
       return `<tr><td class="sc-name">${escapeHtml(teamName)}${playersHtml}</td>${cells}</tr>
         <tr class="sc-wlt"><td class="sc-name">W / L / T</td>${wltCells}</tr>`;
-    }).join('');
+    }).join('<tr class="sc-spacer"><td colspan="22" style="border:none; padding:6px 0;"></td></tr>');
     headLabel = segmentHeaderRowHtml("Front 9: Captain's Choice", "Back 9: Modified Alternate Shot");
     noteHtml = 'One combined score per team per hole — no handicap strokes on Day 1. W/L/T updates live as scores come in.';
   }
@@ -1000,7 +1024,6 @@ function scorecardHtmlForMatch(day, pairingRow, holeRows) {
           ${hasPar ? `<tr class="sc-meta"><td class="sc-name">Par</td>${parCells}</tr>` : ''}
           ${hcpRowsHtml}
           ${bodyHtml}
-          ${wltRowsHtml}
         </tbody>
       </table>
     </div>
