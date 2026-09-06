@@ -87,6 +87,31 @@
   tr.lbx-total td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
   tr.lbx-total td.lbx-pair-h { text-align: left; }
 
+  /* ---- Tournament Total summary (no per-match rows — see dayTotals()) ---- */
+  .lbx-total-summary { display: flex; flex-direction: column; gap: 6px; max-width: 480px; }
+  .lbx-total-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-weight: 600; background: var(--card); }
+  .lbx-total-row span:last-child { font-variant-numeric: tabular-nums; }
+  .lbx-total-row.lbx-grand { background: var(--green-dark); color: #fff; font-size: 1.05rem; border-color: var(--green-dark); }
+
+  /* ---- Match Scorecards: Progression (collapsed) ---- */
+  .sc-collapsed-match { border-bottom: 1px solid var(--border); padding: 12px 0; }
+  .sc-collapsed-match:last-child { border-bottom: none; }
+  .match-title { font-weight: 600; color: var(--green-dark); margin-bottom: 4px; }
+  .prog-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .prog-seg-label { width: 160px; flex-shrink: 0; font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+  .prog-strip { display: flex; gap: 3px; overflow-x: auto; }
+  .prog-chip { flex-shrink: 0; width: 40px; text-align: center; border-radius: 6px; padding: 3px 2px; font-size: 0.72rem; }
+  .prog-chip.prog-a { background: var(--win); color: var(--green-dark); }
+  .prog-chip.prog-b { background: var(--lose); color: var(--error); }
+  .prog-chip.prog-half { background: var(--half); color: #7a5b00; }
+  .prog-chip.prog-pending { background: #eee; color: var(--muted); }
+  .prog-hole { font-size: 0.62rem; opacity: 0.7; }
+  .prog-label { font-weight: 700; }
+
+  /* ---- Match Scorecards: Full Scorecards (expanded) ---- */
+  .scorecard-block { border-bottom: 2px solid var(--border); padding: 16px 0; }
+  .scorecard-block:last-child { border-bottom: none; }
+
   /* ---- Live scorecard replica (below Enter Scores) ---- */
   .sc-teams-live { font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
   table.sc-table-live { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 0.8rem; }
@@ -144,11 +169,24 @@
   <!-- SCOREBOARD -->
   <section id="tab-scoreboard" class="tab-panel" hidden>
     <div class="card">
-      <div class="row" style="justify-content:space-between;">
-        <select id="sbDay"><option value="1">Day 1</option><option value="2">Day 2</option></select>
-        <button class="secondary" onclick="loadScoreboard()">Refresh</button>
+      <div class="row" id="sbViewToggle">
+        <button type="button" class="view-toggle-btn active" data-sbview="leaderboard" onclick="setSbView('leaderboard')">Leaderboard</button>
+        <button type="button" class="view-toggle-btn" data-sbview="scorecards" onclick="setSbView('scorecards')">Match Scorecards</button>
       </div>
+      <div class="row" style="justify-content:space-between;">
+        <select id="sbDay"></select>
+        <button class="secondary" onclick="loadScoreboard()">Update</button>
+      </div>
+
       <div id="sbLeaderboard"></div>
+
+      <div id="sbScorecards" hidden>
+        <div class="row" id="sbScModeToggle">
+          <button type="button" class="view-toggle-btn active" data-scmode="collapsed" onclick="setSbScMode('collapsed')">Progression</button>
+          <button type="button" class="view-toggle-btn" data-scmode="expanded" onclick="setSbScMode('expanded')">Full Scorecards</button>
+        </div>
+        <div id="sbScorecardsBody"></div>
+      </div>
     </div>
   </section>
 
@@ -165,7 +203,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-06d';
+const LIVE_VERSION = '2026-09-06f';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -807,12 +845,48 @@ function wltResultCellsHtml(results, activeStart, activeEnd, startHoleNum, persp
   return cells;
 }
 
-function renderLiveScorecard(day, matchNum) {
-  const wrap = document.getElementById('scLiveCardWrap');
-  if (!matchNum) { wrap.innerHTML = ''; return; }
-  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
-  if (!pairingRow || !(pairingRow.TeamA_P1 || pairingRow.TeamA_P2 || pairingRow.TeamB_P1 || pairingRow.TeamB_P2)) { wrap.innerHTML = ''; return; }
+// ---- per-hole result arrays, shared by the live scorecard, the Scoreboard's
+// expanded scorecards, and its collapsed progression strips ----
+function day1PerHoleResults(holeRows, startHole, endHole) {
+  const results = [];
+  for (let h = startHole; h <= endHole; h++) {
+    const row = holeRows[h - 1] || {};
+    const a = row.TeamA_Strokes === '' || row.TeamA_Strokes === undefined ? null : parseFloat(row.TeamA_Strokes);
+    const b = row.TeamB_Strokes === '' || row.TeamB_Strokes === undefined ? null : parseFloat(row.TeamB_Strokes);
+    results.push(compareHole(a, b));
+  }
+  return results;
+}
+function day2BestBallPerHoleResults(pairingRow, holeRows) {
+  const results = [];
+  for (let h = 1; h <= 9; h++) {
+    const row = holeRows[h - 1] || {};
+    const siA1 = strokeIndexForTee(playerTee(pairingRow.TeamA_P1), h), siA2 = strokeIndexForTee(playerTee(pairingRow.TeamA_P2), h);
+    const siB1 = strokeIndexForTee(playerTee(pairingRow.TeamB_P1), h), siB2 = strokeIndexForTee(playerTee(pairingRow.TeamB_P2), h);
+    const aNets = [netScore(row.TeamA_P1_Gross, playerHandicap(pairingRow.TeamA_P1), siA1), netScore(row.TeamA_P2_Gross, playerHandicap(pairingRow.TeamA_P2), siA2)].filter((v) => v !== null);
+    const bNets = [netScore(row.TeamB_P1_Gross, playerHandicap(pairingRow.TeamB_P1), siB1), netScore(row.TeamB_P2_Gross, playerHandicap(pairingRow.TeamB_P2), siB2)].filter((v) => v !== null);
+    results.push(compareHole(aNets.length ? Math.min(...aNets) : null, bNets.length ? Math.min(...bNets) : null));
+  }
+  return results;
+}
+function day2MatchPlayPerHoleResults(pairingRow, holeRows, mpNum) {
+  const aName = pairingRow['MP' + mpNum + '_TeamA'], bName = pairingRow['MP' + mpNum + '_TeamB'];
+  const aField = grossFieldForPlayer(pairingRow, aName), bField = grossFieldForPlayer(pairingRow, bName);
+  const results = [];
+  for (let h = 10; h <= 18; h++) {
+    const row = holeRows[h - 1] || {};
+    const siA = strokeIndexForTee(playerTee(aName), h), siB = strokeIndexForTee(playerTee(bName), h);
+    const aNet = aField ? netScore(row[aField], playerHandicap(aName), siA) : null;
+    const bNet = bField ? netScore(row[bField], playerHandicap(bName), siB) : null;
+    results.push(compareHole(aNet, bNet));
+  }
+  return results;
+}
 
+// Builds one scorecard's <table> + note — just the innards, no heading — so
+// it can be reused both for the Live Scoring tab's single live scorecard and
+// for the Scoreboard tab's "Full Scorecards" view (every match at once).
+function scorecardHtmlForMatch(day, pairingRow, holeRows) {
   const names = teamNames();
   const hasPar = Object.keys(holeHC.default || {}).some((h) => holeHC.default[h] && holeHC.default[h].Par !== '' && holeHC.default[h].Par != null);
   const startHoleNum = startHoleNumberOf(pairingRow.StartHole);
@@ -851,7 +925,7 @@ function renderLiveScorecard(day, matchNum) {
       const hc = playerHandicap(name);
       let cells = '', out = 0, hasOut = false, inn = 0, hasIn = false;
       for (let h = 1; h <= 18; h++) {
-        const row = currentHoles[h - 1] || {};
+        const row = holeRows[h - 1] || {};
         const gross = row[field];
         const si = strokeIndexForTee(tee, h);
         const strokes = name ? strokesOnHole(hc, si) : 0;
@@ -868,28 +942,9 @@ function renderLiveScorecard(day, matchNum) {
       return `<tr><td class="sc-name">${escapeHtml(name || '(unassigned)')}${teeHtml}</td>${cells}</tr>`;
     }).join('');
 
-    // Per-hole W/L/T, computed live from whatever's on the grid right now.
-    const bbResults = [];
-    for (let h = 1; h <= 9; h++) {
-      const row = currentHoles[h - 1] || {};
-      const siA1 = strokeIndexForTee(playerTee(pairingRow.TeamA_P1), h), siA2 = strokeIndexForTee(playerTee(pairingRow.TeamA_P2), h);
-      const siB1 = strokeIndexForTee(playerTee(pairingRow.TeamB_P1), h), siB2 = strokeIndexForTee(playerTee(pairingRow.TeamB_P2), h);
-      const aNets = [netScore(row.TeamA_P1_Gross, playerHandicap(pairingRow.TeamA_P1), siA1), netScore(row.TeamA_P2_Gross, playerHandicap(pairingRow.TeamA_P2), siA2)].filter((v) => v !== null);
-      const bNets = [netScore(row.TeamB_P1_Gross, playerHandicap(pairingRow.TeamB_P1), siB1), netScore(row.TeamB_P2_Gross, playerHandicap(pairingRow.TeamB_P2), siB2)].filter((v) => v !== null);
-      bbResults.push(compareHole(aNets.length ? Math.min(...aNets) : null, bNets.length ? Math.min(...bNets) : null));
-    }
-    const mp1Results = [], mp2Results = [];
-    [1, 2].forEach((mpNum) => {
-      const aName = pairingRow['MP' + mpNum + '_TeamA'], bName = pairingRow['MP' + mpNum + '_TeamB'];
-      const aField = grossFieldForPlayer(pairingRow, aName), bField = grossFieldForPlayer(pairingRow, bName);
-      for (let h = 10; h <= 18; h++) {
-        const row = currentHoles[h - 1] || {};
-        const siA = strokeIndexForTee(playerTee(aName), h), siB = strokeIndexForTee(playerTee(bName), h);
-        const aNet = aField ? netScore(row[aField], playerHandicap(aName), siA) : null;
-        const bNet = bField ? netScore(row[bField], playerHandicap(bName), siB) : null;
-        (mpNum === 1 ? mp1Results : mp2Results).push(compareHole(aNet, bNet));
-      }
-    });
+    const bbResults = day2BestBallPerHoleResults(pairingRow, holeRows);
+    const mp1Results = day2MatchPlayPerHoleResults(pairingRow, holeRows, 1);
+    const mp2Results = day2MatchPlayPerHoleResults(pairingRow, holeRows, 2);
     wltRowsHtml = [
       [`${escapeHtml(names.A)} vs ${escapeHtml(names.B)} — Best Ball`, bbResults, 1, 9],
       [`${escapeHtml(pairingRow.MP1_TeamA || '?')} vs ${escapeHtml(pairingRow.MP1_TeamB || '?')}`, mp1Results, 10, 18],
@@ -900,14 +955,8 @@ function renderLiveScorecard(day, matchNum) {
     noteHtml = `Each player's dots use their own tee's Stroke Index${anyRed ? ' (Red players: "Hcp (Red)" row, everyone else: "Hcp")' : ''}. W/L/T rows update live as scores come in.`;
   } else {
     rowHeadLabel = 'Team';
-    const ccResults = [], masResults = [];
-    for (let h = 1; h <= 18; h++) {
-      const row = currentHoles[h - 1] || {};
-      const a = row.TeamA_Strokes === '' || row.TeamA_Strokes === undefined ? null : parseFloat(row.TeamA_Strokes);
-      const b = row.TeamB_Strokes === '' || row.TeamB_Strokes === undefined ? null : parseFloat(row.TeamB_Strokes);
-      const result = compareHole(a, b);
-      (h <= 9 ? ccResults : masResults).push(result);
-    }
+    const ccResults = day1PerHoleResults(holeRows, 1, 9);
+    const masResults = day1PerHoleResults(holeRows, 10, 18);
     const fullResults = ccResults.concat(masResults);
     const teams = [
       ['TeamA_Strokes', names.A, pairingRow.TeamA_P1, pairingRow.TeamA_P2, 'A'],
@@ -916,7 +965,7 @@ function renderLiveScorecard(day, matchNum) {
     bodyHtml = teams.map(([field, teamName, p1, p2, perspective]) => {
       let cells = '', out = 0, hasOut = false, inn = 0, hasIn = false;
       for (let h = 1; h <= 18; h++) {
-        const row = currentHoles[h - 1] || {};
+        const row = holeRows[h - 1] || {};
         const raw = row[field];
         const val = (raw !== '' && raw !== undefined) ? parseFloat(raw) : null;
         const segClass = h === 10 ? 'seg' : '';
@@ -940,9 +989,7 @@ function renderLiveScorecard(day, matchNum) {
     noteHtml = 'One combined score per team per hole — no handicap strokes on Day 1. W/L/T updates live as scores come in.';
   }
 
-  wrap.innerHTML = `
-    <h2 style="margin-top:0;">Match Scorecard</h2>
-    <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(pairingRow.StartHole || 'TBD')} &middot; Tee: ${escapeHtml(pairingRow.Tee || 'TBD')}</div>
+  return `
     <div style="overflow-x:auto;">
       <table class="sc-table-live">
         <thead>
@@ -961,8 +1008,59 @@ function renderLiveScorecard(day, matchNum) {
   `;
 }
 
+function renderLiveScorecard(day, matchNum) {
+  const wrap = document.getElementById('scLiveCardWrap');
+  if (!matchNum) { wrap.innerHTML = ''; return; }
+  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
+  if (!pairingRow || !(pairingRow.TeamA_P1 || pairingRow.TeamA_P2 || pairingRow.TeamB_P1 || pairingRow.TeamB_P2)) { wrap.innerHTML = ''; return; }
+  const names = teamNames();
+  wrap.innerHTML = `
+    <h2 style="margin-top:0;">Match Scorecard</h2>
+    <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(pairingRow.StartHole || 'TBD')} &middot; Tee: ${escapeHtml(pairingRow.Tee || 'TBD')}</div>
+    ${scorecardHtmlForMatch(day, pairingRow, currentHoles)}
+  `;
+}
+
 // ====================== SCOREBOARD ======================
+// Two top-level views ("Leaderboard" and "Match Scorecards"), each reading
+// the same sbDay selector — but the day selector's own options differ
+// (Leaderboard adds a "Tournament Total" choice that doesn't make sense for
+// an 18-hole scorecard), so switching views also rebuilds that dropdown.
+let sbView = 'leaderboard';
+let sbScMode = 'collapsed';
+
 document.getElementById('sbDay').addEventListener('change', loadScoreboard);
+
+function setSbView(view) {
+  sbView = view;
+  document.querySelectorAll('#sbViewToggle .view-toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.sbview === view));
+  document.getElementById('sbLeaderboard').hidden = view !== 'leaderboard';
+  document.getElementById('sbScorecards').hidden = view !== 'scorecards';
+  updateSbDayOptions();
+  loadScoreboard();
+}
+function setSbScMode(mode) {
+  sbScMode = mode;
+  document.querySelectorAll('#sbScModeToggle .view-toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.scmode === mode));
+  loadScoreboard();
+}
+function updateSbDayOptions() {
+  const sel = document.getElementById('sbDay');
+  const current = sel.value;
+  const opts = sbView === 'leaderboard'
+    ? [['1', 'Day 1'], ['2', 'Day 2'], ['total', 'Tournament Total']]
+    : [['1', 'Day 1'], ['2', 'Day 2']];
+  sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  sel.value = opts.some(([v]) => v === current) ? current : '1';
+}
+updateSbDayOptions(); // populate the day dropdown up front, before any data loads
+
+function loadScoreboard() {
+  const day = document.getElementById('sbDay').value;
+  if (sbView === 'scorecards') return loadScorecardsView(day);
+  if (day === 'total') return loadTournamentTotal();
+  return loadLeaderboardView(day);
+}
 
 // One compact badge per segment (e.g. "Captain's Choice: 3 up thru 5"),
 // reusing the same colored status-badge look as the Live Scoring status
@@ -971,9 +1069,25 @@ function lbxSegBadgeHtml(label, seg) {
   const cls = seg.leader === 'A' ? 'a' : seg.leader === 'B' ? 'b' : seg.leader === 'Half' ? 'half' : 'pending';
   return `<div class="lbx-seg"><span class="lbx-seg-label">${escapeHtml(label)}:</span> <span class="status-badge ${cls}">${escapeHtml(seg.text)}</span></div>`;
 }
+// Per-match segment breakdown, shared by the per-day leaderboard and the
+// Tournament Total's day-by-day totals — returns each segment's result plus
+// that match's points, without touching the DOM.
+function matchSegmentInfo(day, row, scoresByMatch) {
+  const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
+  let segs, segLabels;
+  if (day === '2') {
+    segs = [computeDay2BestBall(row, holeRows), computeDay2MatchPlay(row, holeRows, 1), computeDay2MatchPlay(row, holeRows, 2)];
+    segLabels = ['Best Ball', `${lastName(row.MP1_TeamA)} vs ${lastName(row.MP1_TeamB)}`, `${lastName(row.MP2_TeamA)} vs ${lastName(row.MP2_TeamB)}`];
+  } else {
+    segs = [computeDay1Segment(holeRows, 1, 9, 'TeamA_Strokes', 'TeamB_Strokes'), computeDay1Segment(holeRows, 10, 18, 'TeamA_Strokes', 'TeamB_Strokes')];
+    segLabels = ["Captain's Choice", 'Modified Alternate Shot'];
+  }
+  let ptsA = 0, ptsB = 0;
+  segs.forEach((s) => { if (s.final) { ptsA += s.points.A; ptsB += s.points.B; } });
+  return { holeRows, segs, segLabels, ptsA, ptsB };
+}
 
-async function loadScoreboard() {
-  const day = document.getElementById('sbDay').value;
+async function loadLeaderboardView(day) {
   const res = await apiGet('getScores', { day });
   const scoresByMatch = {};
   if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
@@ -984,17 +1098,7 @@ async function loadScoreboard() {
     if (!hasPlayersLb(row)) {
       return `<tr><td colspan="5" class="lbx-unset">Match ${escapeHtml(row.MatchNum)} — not set up yet</td></tr>`;
     }
-    const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
-    let segs, segLabels;
-    if (day === '2') {
-      segs = [computeDay2BestBall(row, holeRows), computeDay2MatchPlay(row, holeRows, 1), computeDay2MatchPlay(row, holeRows, 2)];
-      segLabels = ['Best Ball', `${row.MP1_TeamA || '?'} vs ${row.MP1_TeamB || '?'}`, `${row.MP2_TeamA || '?'} vs ${row.MP2_TeamB || '?'}`];
-    } else {
-      segs = [computeDay1Segment(holeRows, 1, 9, 'TeamA_Strokes', 'TeamB_Strokes'), computeDay1Segment(holeRows, 10, 18, 'TeamA_Strokes', 'TeamB_Strokes')];
-      segLabels = ["Captain's Choice", 'Modified Alternate Shot'];
-    }
-    let ptsA = 0, ptsB = 0;
-    segs.forEach((s) => { if (s.final) { ptsA += s.points.A; ptsB += s.points.B; } });
+    const { segs, segLabels, ptsA, ptsB } = matchSegmentInfo(day, row, scoresByMatch);
     totalA += ptsA; totalB += ptsB;
     // Solid highlight once every segment in the match is final (mirrors the
     // reference leaderboard's red "won" styling); a lighter tint just shows
@@ -1027,6 +1131,109 @@ async function loadScoreboard() {
       </table>
     </div>
   `;
+}
+
+// Team totals only — Day 1 and Day 2 pairings are entered independently
+// (Match 3 on Day 1 isn't guaranteed to be the same foursome as Match 3 on
+// Day 2), so a combined per-match row isn't meaningful; this just adds up
+// each team's points across both days.
+function dayTotals(day, res) {
+  const scoresByMatch = {};
+  if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
+  let totalA = 0, totalB = 0;
+  (pairings[day] || []).filter(hasPlayersLb).forEach((row) => {
+    const { ptsA, ptsB } = matchSegmentInfo(day, row, scoresByMatch);
+    totalA += ptsA; totalB += ptsB;
+  });
+  return { A: totalA, B: totalB };
+}
+
+async function loadTournamentTotal() {
+  const [res1, res2] = await Promise.all([apiGet('getScores', { day: '1' }), apiGet('getScores', { day: '2' })]);
+  const t1 = dayTotals('1', res1), t2 = dayTotals('2', res2);
+  const names = teamNames();
+  const grandA = t1.A + t2.A, grandB = t1.B + t2.B;
+  document.getElementById('sbLeaderboard').innerHTML = `
+    <div class="lbx-total-summary">
+      <div class="lbx-total-row"><span>Day 1</span><span>${formatPts(t1.A)} &ndash; ${formatPts(t1.B)}</span></div>
+      <div class="lbx-total-row"><span>Day 2</span><span>${formatPts(t2.A)} &ndash; ${formatPts(t2.B)}</span></div>
+      <div class="lbx-total-row lbx-grand"><span>${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &mdash; Tournament Total</span><span>${formatPts(grandA)} &ndash; ${formatPts(grandB)}</span></div>
+    </div>
+  `;
+}
+
+// ---- Match Scorecards: "Progression" (collapsed) and "Full Scorecards" ----
+
+// A per-hole strip showing the running match-play margin as holes come in —
+// cumulative net of wins (+1 for A, -1 for B) over whatever's decided so far,
+// left to right. A hole before anything's been decided yet shows as blank
+// rather than "AS", so "not started" and "all square" don't look the same.
+function progressionStripHtml(results, activeStart) {
+  let cum = 0, anyDecided = false;
+  let cells = '';
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r === 'A') { cum += 1; anyDecided = true; }
+    else if (r === 'B') { cum -= 1; anyDecided = true; }
+    else if (r === 'Half') { anyDecided = true; }
+    const hole = activeStart + i;
+    let label, cls;
+    if (!anyDecided) { label = '&ndash;'; cls = 'pending'; }
+    else if (cum === 0) { label = 'AS'; cls = 'half'; }
+    else { label = `${Math.abs(cum)} up`; cls = cum > 0 ? 'a' : 'b'; }
+    cells += `<div class="prog-chip prog-${cls}" title="Hole ${hole}"><div class="prog-hole">${hole}</div><div class="prog-label">${label}</div></div>`;
+  }
+  return cells;
+}
+
+function scorecardsCollapsedHtml(day, row, scoresByMatch) {
+  const { holeRows } = matchSegmentInfo(day, row, scoresByMatch);
+  const rowsDef = day === '2'
+    ? [
+        ['Best Ball (front 9)', day2BestBallPerHoleResults(row, holeRows), 1],
+        [`Match Play: ${row.MP1_TeamA || '?'} vs ${row.MP1_TeamB || '?'}`, day2MatchPlayPerHoleResults(row, holeRows, 1), 10],
+        [`Match Play: ${row.MP2_TeamA || '?'} vs ${row.MP2_TeamB || '?'}`, day2MatchPlayPerHoleResults(row, holeRows, 2), 10],
+      ]
+    : [
+        ["Captain's Choice (front 9)", day1PerHoleResults(holeRows, 1, 9), 1],
+        ['Modified Alt Shot (back 9)', day1PerHoleResults(holeRows, 10, 18), 10],
+      ];
+  const progRows = rowsDef.map(([label, results, start]) => `
+    <div class="prog-row">
+      <div class="prog-seg-label">${escapeHtml(label)}</div>
+      <div class="prog-strip">${progressionStripHtml(results, start)}</div>
+    </div>
+  `).join('');
+  return `<div class="sc-collapsed-match"><div class="match-title">${escapeHtml(matchLabel(day, row))}</div>${progRows}</div>`;
+}
+
+async function loadScorecardsView(day) {
+  const res = await apiGet('getScores', { day });
+  const scoresByMatch = {};
+  if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
+
+  const rows = pairings[day] || [];
+  let html;
+  if (!rows.length) {
+    html = '<p class="hint">No matches set up yet.</p>';
+  } else if (sbScMode === 'collapsed') {
+    html = rows.map((row) => hasPlayersLb(row)
+      ? scorecardsCollapsedHtml(day, row, scoresByMatch)
+      : `<div class="sc-collapsed-match"><div class="lbx-unset">Match ${escapeHtml(row.MatchNum)} — not set up yet</div></div>`
+    ).join('');
+  } else {
+    const names = teamNames();
+    html = rows.map((row) => {
+      if (!hasPlayersLb(row)) return `<div class="scorecard-block"><div class="lbx-unset">Match ${escapeHtml(row.MatchNum)} — not set up yet</div></div>`;
+      const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
+      return `<div class="scorecard-block">
+        <h3 style="margin-bottom:2px;">${escapeHtml(matchLabel(day, row))}</h3>
+        <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(row.StartHole || 'TBD')} &middot; Tee: ${escapeHtml(row.Tee || 'TBD')}</div>
+        ${scorecardHtmlForMatch(day, row, holeRows)}
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('sbScorecardsBody').innerHTML = html;
 }
 
 // ====================== UTIL ======================
