@@ -82,12 +82,6 @@
   tr.lbx-total td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
   tr.lbx-total td.lbx-pair-h { text-align: left; }
 
-  /* ---- Two Day Total summary (no per-match rows — see formatTotals()) ---- */
-  .lbx-total-summary { display: flex; flex-direction: column; gap: 6px; max-width: 480px; }
-  .lbx-total-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-weight: 600; background: var(--card); }
-  .lbx-total-row span:last-child { font-variant-numeric: tabular-nums; }
-  .lbx-total-row.lbx-grand { background: var(--green-dark); color: #fff; font-size: 1.05rem; border-color: var(--green-dark); }
-
   /* ---- Individual Results: one table per team, one row per player ---- */
   .indiv-wrap { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
   .indiv-table-wrap { flex: 1 1 360px; min-width: 320px; overflow-x: auto; }
@@ -203,7 +197,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07g';
+const LIVE_VERSION = '2026-09-07h';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -1062,6 +1056,12 @@ function formatTotals(day, res) {
   return totals;
 }
 
+// Same "Points | Team | Match | Team | Points" table as the per-day
+// Leaderboard, but each row is a whole-tournament format total (Captain's
+// Choice, Modified Alternate Shot, Best Ball, Individual Match Play)
+// instead of one specific match — so the middle "Match" column names the
+// format instead of a live status badge, and the pairing columns are blank
+// (there's no one pairing to name once results are pooled across matches).
 async function loadTournamentTotal() {
   const [res1, res2] = await Promise.all([apiGet('getScores', { day: '1' }), apiGet('getScores', { day: '2' })]);
   const d1 = formatTotals('1', res1), d2 = formatTotals('2', res2);
@@ -1074,13 +1074,25 @@ async function loadTournamentTotal() {
   ];
   const grandA = formatRows.reduce((sum, [, pts]) => sum + pts.A, 0);
   const grandB = formatRows.reduce((sum, [, pts]) => sum + pts.B, 0);
-  const formatRowsHtml = formatRows
-    .map(([label, pts]) => `<div class="lbx-total-row"><span>${escapeHtml(label)}</span><span>${formatPts(pts.A)} &ndash; ${formatPts(pts.B)}</span></div>`)
-    .join('');
+  const rowsHtml = formatRows.map(([label, pts]) => {
+    const aAhead = pts.A > pts.B, bAhead = pts.B > pts.A;
+    return `<tr>
+      <td class="lbx-pts ${aAhead ? 'lbx-lead' : ''}"><span class="lbx-pts-total" style="border-top:none; margin-top:0; padding-top:0;">${formatPts(pts.A)}</span></td>
+      <td class="lbx-pair"></td>
+      <td class="lbx-match" style="text-align:center; font-weight:600;">${escapeHtml(label)}</td>
+      <td class="lbx-pair"></td>
+      <td class="lbx-pts ${bAhead ? 'lbx-lead' : ''}"><span class="lbx-pts-total" style="border-top:none; margin-top:0; padding-top:0;">${formatPts(pts.B)}</span></td>
+    </tr>`;
+  }).join('');
   document.getElementById('sbLeaderboard').innerHTML = `
-    <div class="lbx-total-summary">
-      ${formatRowsHtml}
-      <div class="lbx-total-row lbx-grand"><span>${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &mdash; Two Day Total</span><span>${formatPts(grandA)} &ndash; ${formatPts(grandB)}</span></div>
+    <div class="lbx-wrap">
+      <table class="lbx-table">
+        <thead>
+          <tr class="lbx-head"><th>Points</th><th class="lbx-pair-h">${escapeHtml(names.A)}</th><th>Match</th><th class="lbx-pair-h">${escapeHtml(names.B)}</th><th>Points</th></tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot><tr class="lbx-total"><td>${formatPts(grandA)}</td><td class="lbx-pair-h">${escapeHtml(names.A)}</td><td>TOTAL</td><td class="lbx-pair-h">${escapeHtml(names.B)}</td><td>${formatPts(grandB)}</td></tr></tfoot>
+      </table>
     </div>
   `;
 }
