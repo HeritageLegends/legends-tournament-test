@@ -48,6 +48,14 @@
      4th button — styled green so it stands out as the "commit" action. */
   .hbh-save-next { flex: 1 1 140px; padding: 14px 6px; font-size: 0.9rem; font-weight: 700; line-height: 1.2; white-space: normal; border-radius: 8px; background: var(--green); color: #fff; border: none; cursor: pointer; }
   .hbh-seglabel { text-align: center; font-weight: 600; color: var(--muted); font-size: 0.82rem; margin: 2px 0 8px; }
+  /* 18-hole completion map above the pick buttons — empty/unsaved/saved per
+     hole, click any dot to jump there. */
+  .hbh-progress-strip { display: flex; flex-wrap: wrap; gap: 3px; margin: 6px 0 10px; justify-content: center; }
+  .hbh-progress-dot { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; cursor: pointer; border: 1.5px solid transparent; }
+  .hbh-progress-empty { background: #eee; color: var(--muted); }
+  .hbh-progress-unsaved { background: #fff3cd; color: #8a6300; border-color: #f0d580; }
+  .hbh-progress-saved { background: var(--win); color: var(--green-dark); }
+  .hbh-progress-current { border-color: var(--green-dark); box-shadow: 0 0 0 1.5px var(--green-dark); }
   .hbh-stroke-note { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
   .hbh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-left: 4px; }
 
@@ -98,13 +106,17 @@
   .prog-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
   .prog-seg-label { width: 160px; flex-shrink: 0; font-size: 0.8rem; color: var(--muted); font-weight: 600; }
   .prog-strip { display: flex; gap: 3px; overflow-x: auto; }
-  .prog-chip { flex-shrink: 0; width: 40px; text-align: center; border-radius: 6px; padding: 3px 2px; font-size: 0.72rem; }
+  .prog-chip { position: relative; flex-shrink: 0; width: 40px; text-align: center; border-radius: 6px; padding: 3px 2px; font-size: 0.72rem; }
   .prog-chip.prog-a { background: var(--win); color: var(--green-dark); }
   .prog-chip.prog-b { background: var(--lose); color: var(--error); }
   .prog-chip.prog-half { background: var(--half); color: #7a5b00; }
   .prog-chip.prog-pending { background: #eee; color: var(--muted); }
   .prog-hole { font-size: 0.62rem; opacity: 0.7; }
   .prog-label { font-weight: 700; }
+  /* Small badge marking a hole that was specifically tied — needed because a
+     halved hole doesn't move the cumulative margin shown by .prog-label, so
+     without this a tie can look identical to the hole before it. */
+  .prog-tie { position: absolute; top: -6px; right: -4px; width: 15px; height: 15px; border-radius: 50%; background: var(--half); color: #7a5b00; border: 1.5px solid #fff; font-size: 0.6rem; font-weight: 800; line-height: 12px; }
 
   /* ---- Direct hole-winner entry (replaces old gross-score inputs) ---- */
   .wpick-block { padding: 14px 4px; border-bottom: 1px solid var(--border); }
@@ -189,7 +201,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07l';
+const LIVE_VERSION = '2026-09-07n';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -341,6 +353,44 @@ let currentHoles = []; // in-memory grid for the currently selected match
 let saveTimers = {};
 let scHoleIndex = 0; // 0-based, 0..17 — which hole the hbh view is showing
 
+// Snapshot (by "day_matchNum") of the hole data as of the last time it was
+// either freshly loaded from the sheet or confirmed written back to it — the
+// "confirmed saved" baseline the per-hole indicator strip compares against,
+// so a hole that's been tapped but not yet confirmed saved reads differently
+// from one that's actually landed in the sheet. See holeSaveState below.
+let lastSavedHolesByMatch = {};
+function cloneHoles(holes) { return JSON.parse(JSON.stringify(holes || [])); }
+function fieldsForDay(day) { return day === '2' ? ['BestBallWinner', 'MP1Winner', 'MP2Winner'] : ['Winner']; }
+// 'empty' — no result entered at all; 'saved' — matches the last confirmed-
+// saved snapshot; 'unsaved' — has a result that differs from (or isn't yet
+// in) that snapshot, i.e. entered here but not confirmed written to the
+// sheet yet (still mid-autosave-debounce, or the save hasn't been retried
+// since an error).
+function holeSaveState(day, matchNum, idx) {
+  const holeRow = currentHoles[idx];
+  if (!holeRow) return 'empty';
+  const fields = fieldsForDay(day);
+  const hasValue = fields.some((f) => holeRow[f]);
+  if (!hasValue) return 'empty';
+  const saved = (lastSavedHolesByMatch[day + '_' + matchNum] || [])[idx];
+  const matchesSaved = saved && fields.every((f) => String(saved[f] || '') === String(holeRow[f] || ''));
+  return matchesSaved ? 'saved' : 'unsaved';
+}
+// Compares what was just POSTed against what the server handed back right
+// after writing it (saveMatchScores_ returns the sheet's own post-write rows
+// for this match) — catches the sheet silently not ending up with what we
+// think we sent (a write that got clobbered, a lock/quota hiccup Apps Script
+// swallowed, etc.) instead of trusting a bare "success" from the API call.
+function holesMatchServerRows(day, sentHoles, serverRows) {
+  const byHole = {};
+  (serverRows || []).forEach((r) => { byHole[r.Hole] = r; });
+  const fields = fieldsForDay(day);
+  return sentHoles.every((h) => {
+    const r = byHole[h.Hole] || {};
+    return fields.every((f) => String(r[f] || '') === String(h[f] || ''));
+  });
+}
+
 // ---- per-match PIN gate ----
 // A match's PIN (set by the admin in the Pairings table) is optional — blank
 // means anyone with this link can still enter that match's scores, same as
@@ -387,6 +437,10 @@ async function onScMatchSelected() {
   const res = await apiGet('getScores', { day });
   const rows = res.success ? res.data.filter((r) => String(r.MatchNum) === String(matchNum)) : [];
   currentHoles = buildHoleGrid(day, matchNum, rows);
+  // Whatever just came back from the sheet is, by definition, already saved —
+  // seed the baseline the per-hole indicator strip compares against so every
+  // hole loaded this way starts out reading as "saved," not "unsaved."
+  if (res.success) lastSavedHolesByMatch[day + '_' + matchNum] = cloneHoles(currentHoles);
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
   // Jump straight to the first hole that still needs a result, so a
   // scorekeeper picking up mid-round doesn't have to page through
@@ -455,7 +509,7 @@ function renderScoringUI(day, matchNum) {
     return;
   }
   toggleEl.innerHTML = pairingRow && pairingRow.PIN
-    ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Change PIN</button>`
+    ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Forget PIN</button>`
     : '';
   renderHoleByHole(day, matchNum);
 }
@@ -538,6 +592,22 @@ function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName, extraBtnHtml
   return `<div class="wpick-block"><div class="wpick-sides"><div class="wpick-side">${escapeHtml(aLabel)}${playerStrokeNoteHtml(aName, hole)}</div><div class="wpick-side">${escapeHtml(bLabel)}${playerStrokeNoteHtml(bName, hole)}</div></div>${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml)}</div>`;
 }
 
+// Compact 18-dot map of this match's holes — click any dot to jump there,
+// same as the dropdown. Three states per hole: empty (nothing entered yet),
+// unsaved (entered here but not yet confirmed written to the sheet — still
+// mid-autosave-debounce, or a save attempt errored), and saved (confirmed in
+// the sheet as of the last load or successful save). This is what actually
+// answers "did that stick" at a glance, rather than only the one-line
+// indicator up top which only reflects the very last save attempt.
+function holeCompletionStripHtml(day, matchNum) {
+  const dots = Array.from({ length: 18 }, (_, i) => {
+    const state = holeSaveState(day, matchNum, i);
+    const current = i === scHoleIndex ? ' hbh-progress-current' : '';
+    return `<div class="hbh-progress-dot hbh-progress-${state}${current}" data-hole-idx="${i}" title="Hole ${i + 1}${state === 'saved' ? ' — saved' : state === 'unsaved' ? ' — entered, not yet confirmed saved' : ' — not entered'}">${i + 1}</div>`;
+  });
+  return `<div class="hbh-progress-strip">${dots.join('')}</div>`;
+}
+
 // One hole at a time — just this match's players/teams, big touch-friendly
 // tap targets, no horizontal scrolling. The nav row (‹ and the hole
 // dropdown) sits above the pick buttons; the "Save and move to hole N"
@@ -580,10 +650,15 @@ function renderHoleByHole(day, matchNum) {
         }).join('')}
       </select>
     </div>
+    ${holeCompletionStripHtml(day, matchNum)}
     <div class="hbh-seglabel">${escapeHtml(segLabel)}</div>
     ${blocksHtml}
-    <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save now and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that.</p>
+    <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save now and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that. The row of hole numbers above shows what's actually confirmed: grey means nothing's entered, yellow means it's entered here but not yet confirmed saved, green means it's saved — tap any number to jump to that hole.</p>
   `;
+
+  wrap.querySelectorAll('.hbh-progress-dot').forEach((dot) => {
+    dot.addEventListener('click', () => jumpToHole(dot.dataset.holeIdx));
+  });
 
   wrap.querySelectorAll('.wpick-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -665,7 +740,21 @@ async function saveCurrentMatch(day, matchNum, holes) {
   if (isCurrentlyViewed()) setSaveIndicator('saving', 'Saving…');
   try {
     const res = await apiPost('saveMatchScores', { day, matchNum, holes: JSON.stringify(holes) });
-    if (isCurrentlyViewed()) setSaveIndicator(res.success ? 'saved' : 'error', res.success ? 'Saved ✓' : res.error);
+    if (!res.success) {
+      if (isCurrentlyViewed()) setSaveIndicator('error', res.error);
+      return;
+    }
+    // Don't just trust "success" from the API call — check what the sheet
+    // actually ended up holding (returned right after the write) matches
+    // what we sent, so a save that silently didn't stick shows as an error
+    // here and now instead of only surfacing later as "the hole came back
+    // blank."
+    if (holesMatchServerRows(day, holes, res.data)) {
+      lastSavedHolesByMatch[key] = cloneHoles(holes);
+      if (isCurrentlyViewed()) { setSaveIndicator('saved', 'Saved ✓'); renderHoleByHole(day, matchNum); }
+    } else if (isCurrentlyViewed()) {
+      setSaveIndicator('error', 'Save didn’t verify — try again');
+    }
   } catch (err) {
     if (isCurrentlyViewed()) setSaveIndicator('error', 'Network error');
   }
@@ -1125,19 +1214,31 @@ async function loadIndividualResults() {
 // left to right. A hole before anything's been decided yet shows as blank
 // rather than "AS", so "not started" and "all square" don't look the same.
 function progressionStripHtml(results, activeStart) {
-  let cum = 0, anyDecided = false;
+  let cum = 0;
   let cells = '';
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
-    if (r === 'A') { cum += 1; anyDecided = true; }
-    else if (r === 'B') { cum -= 1; anyDecided = true; }
-    else if (r === 'Half') { anyDecided = true; }
     const hole = activeStart + i;
+    // A hole with no result entered yet always reads as "not entered" — even
+    // if an earlier hole in this segment was already decided — rather than
+    // silently carrying forward the running margin from the last decided
+    // hole, which used to make an un-entered hole look identical to a
+    // decided one.
+    if (r === 'pending') {
+      cells += `<div class="prog-chip prog-pending" title="Hole ${hole} — not entered"><div class="prog-hole">${hole}</div><div class="prog-label">&ndash;</div></div>`;
+      continue;
+    }
+    if (r === 'A') cum += 1;
+    else if (r === 'B') cum -= 1;
+    // 'Half' leaves cum unchanged.
     let label, cls;
-    if (!anyDecided) { label = '&ndash;'; cls = 'pending'; }
-    else if (cum === 0) { label = 'AS'; cls = 'half'; }
+    if (cum === 0) { label = 'AS'; cls = 'half'; }
     else { label = `${Math.abs(cum)} up`; cls = cum > 0 ? 'a' : 'b'; }
-    cells += `<div class="prog-chip prog-${cls}" title="Hole ${hole}"><div class="prog-hole">${hole}</div><div class="prog-label">${label}</div></div>`;
+    // A halved hole doesn't move the running margin, so on its own it can
+    // look identical to the hole before it (e.g. "1 up" -> "1 up"). Flag it
+    // explicitly with a small tie mark so a tie is never invisible.
+    const tieMark = r === 'Half' ? '<div class="prog-tie" title="Tied this hole">T</div>' : '';
+    cells += `<div class="prog-chip prog-${cls}" title="Hole ${hole}${r === 'Half' ? ' — tied' : ''}"><div class="prog-hole">${hole}</div><div class="prog-label">${label}</div>${tieMark}</div>`;
   }
   return cells;
 }
