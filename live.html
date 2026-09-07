@@ -82,11 +82,23 @@
   tr.lbx-total td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
   tr.lbx-total td.lbx-pair-h { text-align: left; }
 
-  /* ---- Two Day Total summary (no per-match rows — see dayTotals()) ---- */
+  /* ---- Two Day Total summary (no per-match rows — see formatTotals()) ---- */
   .lbx-total-summary { display: flex; flex-direction: column; gap: 6px; max-width: 480px; }
   .lbx-total-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-weight: 600; background: var(--card); }
   .lbx-total-row span:last-child { font-variant-numeric: tabular-nums; }
   .lbx-total-row.lbx-grand { background: var(--green-dark); color: #fff; font-size: 1.05rem; border-color: var(--green-dark); }
+
+  /* ---- Individual Results: one table per team, one row per player ---- */
+  .indiv-wrap { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .indiv-table-wrap { flex: 1 1 360px; min-width: 320px; overflow-x: auto; }
+  table.indiv-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+  table.indiv-table th, table.indiv-table td { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); }
+  td.indiv-name { text-align: left; font-weight: 600; }
+  td.indiv-total, tr.indiv-col-row th:last-child { font-weight: 700; }
+  tr.indiv-team-row th { background: var(--green-dark); color: #fff; font-size: 1rem; text-align: left; padding: 8px 10px; border-bottom: none; }
+  tr.indiv-daygroup-row th { background: #eef4ee; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em; border-bottom: none; }
+  tr.indiv-total-row td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
+  tr.indiv-total-row td:first-child { text-align: left; }
 
   /* ---- Match Scorecards: Progression (collapsed) ---- */
   .sc-collapsed-match { border-bottom: 1px solid var(--border); padding: 12px 0; }
@@ -161,6 +173,7 @@
       <div class="row" id="sbViewToggle">
         <button type="button" class="view-toggle-btn active" data-sbview="leaderboard" onclick="setSbView('leaderboard')">Leaderboard</button>
         <button type="button" class="view-toggle-btn" data-sbview="scorecards" onclick="setSbView('scorecards')">Match Scorecards</button>
+        <button type="button" class="view-toggle-btn" data-sbview="individual" onclick="setSbView('individual')">Individual Results</button>
       </div>
       <div class="row" style="justify-content:space-between;">
         <select id="sbDay"></select>
@@ -172,6 +185,8 @@
       <div id="sbScorecards" hidden>
         <div id="sbScorecardsBody"></div>
       </div>
+
+      <div id="sbIndividual" hidden></div>
     </div>
   </section>
 
@@ -188,7 +203,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07f';
+const LIVE_VERSION = '2026-09-07g';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -888,6 +903,10 @@ function setSbView(view) {
   document.querySelectorAll('#sbViewToggle .view-toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.sbview === view));
   document.getElementById('sbLeaderboard').hidden = view !== 'leaderboard';
   document.getElementById('sbScorecards').hidden = view !== 'scorecards';
+  document.getElementById('sbIndividual').hidden = view !== 'individual';
+  // Individual Results always covers the whole two-day tournament at once —
+  // no day to pick, so the dropdown is just hidden rather than repurposed.
+  document.getElementById('sbDay').hidden = view === 'individual';
   updateSbDayOptions();
   loadScoreboard();
 }
@@ -905,6 +924,7 @@ updateSbDayOptions(); // populate the day dropdown up front, before any data loa
 function loadScoreboard() {
   const day = document.getElementById('sbDay').value;
   if (sbView === 'scorecards') return loadScorecardsView(day);
+  if (sbView === 'individual') return loadIndividualResults();
   if (day === 'total') return loadTournamentTotal();
   return loadLeaderboardView(day);
 }
@@ -1013,31 +1033,160 @@ async function loadLeaderboardView(day) {
   `;
 }
 
-// Team totals only — Day 1 and Day 2 pairings are entered independently
-// (Match 3 on Day 1 isn't guaranteed to be the same foursome as Match 3 on
-// Day 2), so a combined per-match row isn't meaningful; this just adds up
-// each team's points across both days.
-function dayTotals(day, res) {
+// Team totals broken out by format, pooling every match on that day together
+// (unlike the per-day Leaderboard's one-row-per-match view) — Day 1 splits
+// into Captain's Choice / Modified Alternate Shot, Day 2 into Best Ball /
+// Individual Match Play (both matchups combined into one figure). Day 1 and
+// Day 2 pairings are entered independently (Match 3 on Day 1 isn't
+// guaranteed to be the same foursome as Match 3 on Day 2), so a combined
+// per-match row isn't meaningful here — only the format-level totals are.
+function formatTotals(day, res) {
   const scoresByMatch = {};
   if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
-  let totalA = 0, totalB = 0;
+  const totals = day === '2'
+    ? { bestBall: { A: 0, B: 0 }, matchPlay: { A: 0, B: 0 } }
+    : { captainsChoice: { A: 0, B: 0 }, altShot: { A: 0, B: 0 } };
   (pairings[day] || []).filter(hasPlayersLb).forEach((row) => {
-    const { ptsA, ptsB } = matchSegmentInfo(day, row, scoresByMatch);
-    totalA += ptsA; totalB += ptsB;
+    const { segs } = matchSegmentInfo(day, row, scoresByMatch);
+    if (day === '2') {
+      const [bb, mp1, mp2] = segs;
+      if (bb.final) { totals.bestBall.A += bb.points.A; totals.bestBall.B += bb.points.B; }
+      if (mp1.final) { totals.matchPlay.A += mp1.points.A; totals.matchPlay.B += mp1.points.B; }
+      if (mp2.final) { totals.matchPlay.A += mp2.points.A; totals.matchPlay.B += mp2.points.B; }
+    } else {
+      const [cc, altShot] = segs;
+      if (cc.final) { totals.captainsChoice.A += cc.points.A; totals.captainsChoice.B += cc.points.B; }
+      if (altShot.final) { totals.altShot.A += altShot.points.A; totals.altShot.B += altShot.points.B; }
+    }
   });
-  return { A: totalA, B: totalB };
+  return totals;
 }
 
 async function loadTournamentTotal() {
   const [res1, res2] = await Promise.all([apiGet('getScores', { day: '1' }), apiGet('getScores', { day: '2' })]);
-  const t1 = dayTotals('1', res1), t2 = dayTotals('2', res2);
+  const d1 = formatTotals('1', res1), d2 = formatTotals('2', res2);
   const names = teamNames();
-  const grandA = t1.A + t2.A, grandB = t1.B + t2.B;
+  const formatRows = [
+    ["Captain's Choice", d1.captainsChoice],
+    ['Modified Alternate Shot', d1.altShot],
+    ['Best Ball', d2.bestBall],
+    ['Individual Match Play', d2.matchPlay],
+  ];
+  const grandA = formatRows.reduce((sum, [, pts]) => sum + pts.A, 0);
+  const grandB = formatRows.reduce((sum, [, pts]) => sum + pts.B, 0);
+  const formatRowsHtml = formatRows
+    .map(([label, pts]) => `<div class="lbx-total-row"><span>${escapeHtml(label)}</span><span>${formatPts(pts.A)} &ndash; ${formatPts(pts.B)}</span></div>`)
+    .join('');
   document.getElementById('sbLeaderboard').innerHTML = `
     <div class="lbx-total-summary">
-      <div class="lbx-total-row"><span>Day 1</span><span>${formatPts(t1.A)} &ndash; ${formatPts(t1.B)}</span></div>
-      <div class="lbx-total-row"><span>Day 2</span><span>${formatPts(t2.A)} &ndash; ${formatPts(t2.B)}</span></div>
+      ${formatRowsHtml}
       <div class="lbx-total-row lbx-grand"><span>${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &mdash; Two Day Total</span><span>${formatPts(grandA)} &ndash; ${formatPts(grandB)}</span></div>
+    </div>
+  `;
+}
+
+// ---- Individual Results: each player's own point total, by format ----
+
+// Every player's points for one day, credited from whichever match they
+// actually took part in — Day 1's Captain's Choice/Modified Alternate Shot
+// are a shared team-of-two result, so both teammates get the same figure;
+// Day 2's Best Ball is likewise shared by both teammates, but Individual
+// Match Play is genuinely per-player (MP1_TeamA/MP1_TeamB, MP2_TeamA/
+// MP2_TeamB name exactly which two players faced off). A segment that
+// isn't final yet simply doesn't add anything, same as the Leaderboard.
+function individualPointsFor(day, res) {
+  const scoresByMatch = {};
+  if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
+  const pts = {}; // name -> { cc, altShot, bestBall, matchPlay }
+  const add = (name, field, value) => {
+    if (!name) return;
+    if (!pts[name]) pts[name] = { cc: 0, altShot: 0, bestBall: 0, matchPlay: 0 };
+    pts[name][field] += value;
+  };
+  (pairings[day] || []).filter(hasPlayersLb).forEach((row) => {
+    const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
+    if (day === '2') {
+      const bb = computeDay2BestBall(row, holeRows);
+      const mp1 = computeDay2MatchPlay(row, holeRows, 1);
+      const mp2 = computeDay2MatchPlay(row, holeRows, 2);
+      if (bb.final) {
+        add(row.TeamA_P1, 'bestBall', bb.points.A); add(row.TeamA_P2, 'bestBall', bb.points.A);
+        add(row.TeamB_P1, 'bestBall', bb.points.B); add(row.TeamB_P2, 'bestBall', bb.points.B);
+      }
+      if (mp1.final) { add(row.MP1_TeamA, 'matchPlay', mp1.points.A); add(row.MP1_TeamB, 'matchPlay', mp1.points.B); }
+      if (mp2.final) { add(row.MP2_TeamA, 'matchPlay', mp2.points.A); add(row.MP2_TeamB, 'matchPlay', mp2.points.B); }
+    } else {
+      const cc = computeDay1Segment(holeRows, 1, 9);
+      const altShot = computeDay1Segment(holeRows, 10, 18);
+      if (cc.final) {
+        add(row.TeamA_P1, 'cc', cc.points.A); add(row.TeamA_P2, 'cc', cc.points.A);
+        add(row.TeamB_P1, 'cc', cc.points.B); add(row.TeamB_P2, 'cc', cc.points.B);
+      }
+      if (altShot.final) {
+        add(row.TeamA_P1, 'altShot', altShot.points.A); add(row.TeamA_P2, 'altShot', altShot.points.A);
+        add(row.TeamB_P1, 'altShot', altShot.points.B); add(row.TeamB_P2, 'altShot', altShot.points.B);
+      }
+    }
+  });
+  return pts;
+}
+
+// Points of exactly 0 print as a dash rather than "0", same convention as
+// the reference template — a scorekeeper reads a dash as "shut out on this
+// one," not as missing data.
+function indivCellHtml(n) {
+  return n > 0 ? formatPts(n) : '&ndash;';
+}
+
+function individualTableHtml(teamLabel, players, pts) {
+  const blank = { cc: 0, altShot: 0, bestBall: 0, matchPlay: 0 };
+  const rowsHtml = players.map((name) => {
+    const p = pts[name] || blank;
+    const total = p.cc + p.altShot + p.bestBall + p.matchPlay;
+    return `<tr><td class="indiv-name">${escapeHtml(name)}</td><td>${indivCellHtml(p.cc)}</td><td>${indivCellHtml(p.altShot)}</td><td>${indivCellHtml(p.bestBall)}</td><td>${indivCellHtml(p.matchPlay)}</td><td class="indiv-total">${indivCellHtml(total)}</td></tr>`;
+  }).join('');
+  const totals = players.reduce((acc, name) => {
+    const p = pts[name] || blank;
+    acc.cc += p.cc; acc.altShot += p.altShot; acc.bestBall += p.bestBall; acc.matchPlay += p.matchPlay;
+    return acc;
+  }, { cc: 0, altShot: 0, bestBall: 0, matchPlay: 0 });
+  const grandTotal = totals.cc + totals.altShot + totals.bestBall + totals.matchPlay;
+  return `
+    <div class="indiv-table-wrap">
+      <table class="indiv-table">
+        <thead>
+          <tr class="indiv-team-row"><th colspan="6">${escapeHtml(teamLabel)}</th></tr>
+          <tr class="indiv-daygroup-row"><th></th><th colspan="2">Day 1</th><th colspan="2">Day 2</th><th></th></tr>
+          <tr class="indiv-col-row"><th></th><th>Captain's Choice</th><th>Alternate Shot</th><th>Best Ball</th><th>Match Play</th><th>Total</th></tr>
+        </thead>
+        <tbody>${rowsHtml || `<tr><td colspan="6" class="lbx-unset">No players assigned to this team yet (Admin &rarr; Roster)</td></tr>`}</tbody>
+        ${players.length ? `<tfoot><tr class="indiv-total-row"><td>Total</td><td>${formatPts(totals.cc)}</td><td>${formatPts(totals.altShot)}</td><td>${formatPts(totals.bestBall)}</td><td>${formatPts(totals.matchPlay)}</td><td>${formatPts(grandTotal)}</td></tr></tfoot>` : ''}
+      </table>
+    </div>
+  `;
+}
+
+async function loadIndividualResults() {
+  const [res1, res2] = await Promise.all([apiGet('getScores', { day: '1' }), apiGet('getScores', { day: '2' })]);
+  const pts1 = individualPointsFor('1', res1), pts2 = individualPointsFor('2', res2);
+  const pts = {};
+  new Set([...Object.keys(pts1), ...Object.keys(pts2)]).forEach((name) => {
+    pts[name] = {
+      cc: (pts1[name] || {}).cc || 0,
+      altShot: (pts1[name] || {}).altShot || 0,
+      bestBall: (pts2[name] || {}).bestBall || 0,
+      matchPlay: (pts2[name] || {}).matchPlay || 0,
+    };
+  });
+  const names = teamNames();
+  // Grouped by each player's Roster team assignment (Admin → Roster), not by
+  // who they happened to be paired with in any one match.
+  const teamAPlayers = roster.filter((p) => p.Team === 'A' && p.Name).map((p) => p.Name);
+  const teamBPlayers = roster.filter((p) => p.Team === 'B' && p.Name).map((p) => p.Name);
+  document.getElementById('sbIndividual').innerHTML = `
+    <div class="indiv-wrap">
+      ${individualTableHtml(names.A, teamAPlayers, pts)}
+      ${individualTableHtml(names.B, teamBPlayers, pts)}
     </div>
   `;
 }
