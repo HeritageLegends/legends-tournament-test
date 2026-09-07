@@ -44,7 +44,9 @@
   .hbh-nav select { flex: 1; }
   .hbh-nav button { padding: 10px 16px; font-size: 1.1rem; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; cursor: pointer; flex-shrink: 0; }
   .hbh-nav button:disabled { opacity: 0.35; }
-  .hbh-save-next { flex: 1 1 150px; padding: 10px 12px !important; font-size: 0.85rem !important; font-weight: 700; line-height: 1.2 !important; white-space: normal; background: var(--green) !important; color: #fff; border: none !important; }
+  /* Rides on the same .wpick-row line as the win/tie/win buttons, as the
+     4th button — styled green so it stands out as the "commit" action. */
+  .hbh-save-next { flex: 1 1 140px; padding: 14px 6px; font-size: 0.9rem; font-weight: 700; line-height: 1.2; white-space: normal; border-radius: 8px; background: var(--green); color: #fff; border: none; cursor: pointer; }
   .hbh-seglabel { text-align: center; font-weight: 600; color: var(--muted); font-size: 0.82rem; margin: 2px 0 8px; }
   .hbh-stroke-note { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
   .hbh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-left: 4px; }
@@ -109,8 +111,8 @@
   .wpick-block:last-child { border-bottom: none; }
   .wpick-sides { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .wpick-side { font-weight: 600; flex: 1; }
-  .wpick-row { display: flex; gap: 8px; }
-  .wpick-btn { flex: 1; padding: 14px 6px; font-size: 1rem; font-weight: 700; border-radius: 8px; border: 1.5px solid var(--border); background: #fff; cursor: pointer; }
+  .wpick-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .wpick-btn { flex: 1 1 90px; padding: 14px 6px; font-size: 1rem; font-weight: 700; border-radius: 8px; border: 1.5px solid var(--border); background: #fff; cursor: pointer; }
   .wpick-btn.active.wpick-a { background: var(--win); border-color: var(--green); color: var(--green-dark); }
   .wpick-btn.active.wpick-b { background: var(--lose); border-color: var(--error); color: var(--error); }
   .wpick-btn.active.wpick-half { background: var(--half); border-color: var(--gold); color: #7a5b00; }
@@ -187,7 +189,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07k';
+const LIVE_VERSION = '2026-09-07l';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -513,34 +515,37 @@ function playerStrokeNoteHtml(name, hole) {
 // Button text: the Tie button just says "Tie"; each side's own button says
 // "<name> Wins" so the row is self-explanatory without a separate label line
 // above it.
-function winnerButtonsHtml(field, val, aLabel, bLabel) {
+function winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml) {
   const btn = (v, rawLabel, cls) => {
     const label = v === 'Half' ? rawLabel : `${rawLabel} Wins`;
     return `<button type="button" class="wpick-btn ${val === v ? 'active ' + cls : ''}" data-wfield="${field}" data-wval="${v}">${escapeHtml(label)}</button>`;
   };
-  return `<div class="wpick-row">${btn('A', aLabel, 'wpick-a')}${btn('Half', 'Tie', 'wpick-half')}${btn('B', bLabel, 'wpick-b')}</div>`;
+  return `<div class="wpick-row">${btn('A', aLabel, 'wpick-a')}${btn('Half', 'Tie', 'wpick-half')}${btn('B', bLabel, 'wpick-b')}${extraBtnHtml || ''}</div>`;
 }
 // Team-vs-team pick (Day 1 both segments, Day 2 Best Ball) — just the three
 // buttons, since each button's own "<Team> Wins" text already says who it's
-// for.
-function teamWinnerBlockHtml(field, holeRow, hole, aLabel, bLabel) {
+// for. extraBtnHtml (optional) is appended into the same button row — used
+// to fold the "Save and move to hole N" button onto this line.
+function teamWinnerBlockHtml(field, holeRow, hole, aLabel, bLabel, extraBtnHtml) {
   const val = holeRow[field] || '';
-  return `<div class="wpick-block">${winnerButtonsHtml(field, val, aLabel, bLabel)}</div>`;
+  return `<div class="wpick-block">${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml)}</div>`;
 }
 // Player-vs-player pick (Day 2 Individual Match Play, one block per MP slot).
-function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName) {
+// extraBtnHtml (optional) is appended into the same button row.
+function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName, extraBtnHtml) {
   const val = holeRow[field] || '';
   const aLabel = lastNameOrUnassigned(aName), bLabel = lastNameOrUnassigned(bName);
-  return `<div class="wpick-block"><div class="wpick-sides"><div class="wpick-side">${escapeHtml(aLabel)}${playerStrokeNoteHtml(aName, hole)}</div><div class="wpick-side">${escapeHtml(bLabel)}${playerStrokeNoteHtml(bName, hole)}</div></div>${winnerButtonsHtml(field, val, aLabel, bLabel)}</div>`;
+  return `<div class="wpick-block"><div class="wpick-sides"><div class="wpick-side">${escapeHtml(aLabel)}${playerStrokeNoteHtml(aName, hole)}</div><div class="wpick-side">${escapeHtml(bLabel)}${playerStrokeNoteHtml(bName, hole)}</div></div>${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml)}</div>`;
 }
 
 // One hole at a time — just this match's players/teams, big touch-friendly
-// tap targets, no horizontal scrolling. The nav row (‹, the hole dropdown,
-// and a "Save and move to hole N" button in place of a bare › arrow) sits
-// right above the pick buttons. Picking a result never moves you on by
-// itself — only that explicit button does, so you can review a hole before
-// committing to the next one. Prev (‹) and the dropdown just navigate
-// without forcing a save first.
+// tap targets, no horizontal scrolling. The nav row (‹ and the hole
+// dropdown) sits above the pick buttons; the "Save and move to hole N"
+// button rides on the same line as the last (or only) winner-pick row so
+// all four buttons read as one unit. Picking a result never moves you on
+// by itself — only that explicit button does, so you can review a hole
+// before committing to the next one. Prev (‹) and the dropdown just
+// navigate without forcing a save first.
 function renderHoleByHole(day, matchNum) {
   const wrap = document.getElementById('scGridWrap');
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
@@ -551,17 +556,18 @@ function renderHoleByHole(day, matchNum) {
   const segLabel = h <= 9
     ? (day === '2' ? 'Best Ball (front 9)' : "Captain's Choice (front 9)")
     : (day === '2' ? 'Individual Match Play (back 9)' : 'Modified Alternate Shot (back 9)');
+  const saveBtnHtml = `<button type="button" class="hbh-save-next" onclick="saveAndAdvance('${day}', '${matchNum}')">Save now and move to hole ${nextH}</button>`;
 
   let blocksHtml;
   if (day === '2') {
     if (h <= 9) {
-      blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, names.A, names.B);
+      blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, names.A, names.B, saveBtnHtml);
     } else {
       blocksHtml = matchupWinnerBlockHtml('MP1Winner', holeRow, h, pairingRow.MP1_TeamA, pairingRow.MP1_TeamB)
-        + matchupWinnerBlockHtml('MP2Winner', holeRow, h, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB);
+        + matchupWinnerBlockHtml('MP2Winner', holeRow, h, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB, saveBtnHtml);
     }
   } else {
-    blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B);
+    blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B, saveBtnHtml);
   }
 
   wrap.innerHTML = `
@@ -573,11 +579,10 @@ function renderHoleByHole(day, matchNum) {
           return `<option value="${i}" ${i === scHoleIndex ? 'selected' : ''}>Hole ${i + 1}${p ? ` (Par ${escapeHtml(String(p))})` : ''}</option>`;
         }).join('')}
       </select>
-      <button type="button" class="hbh-save-next" onclick="saveAndAdvance('${day}', '${matchNum}')">Save and move to hole ${nextH}</button>
     </div>
     <div class="hbh-seglabel">${escapeHtml(segLabel)}</div>
     ${blocksHtml}
-    <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that.</p>
+    <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save now and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that.</p>
   `;
 
   wrap.querySelectorAll('.wpick-btn').forEach((btn) => {
