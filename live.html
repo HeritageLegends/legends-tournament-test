@@ -60,11 +60,15 @@
      column. ---- */
   .lbx-wrap { overflow-x: auto; }
   table.lbx-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-  table.lbx-table th, table.lbx-table td { padding: 8px 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); }
+  table.lbx-table th, table.lbx-table td { padding: 8px 10px; text-align: center; vertical-align: top; border-bottom: 1px solid var(--border); }
   tr.lbx-head th { background: var(--green-dark); color: #fff; font-weight: 700; border-bottom: none; }
   tr.lbx-head th.lbx-pair-h { text-align: left; }
   td.lbx-pair-h, td.lbx-pair { text-align: left; }
-  td.lbx-pts { font-weight: 700; font-size: 1rem; width: 60px; }
+  td.lbx-pts { width: 60px; vertical-align: top; font-variant-numeric: tabular-nums; }
+  .lbx-pts-seg { font-size: 0.78rem; font-weight: 400; margin: 2px 0; color: var(--muted); }
+  .lbx-pts-total { font-weight: 700; font-size: 1rem; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+  td.lbx-final-lead .lbx-pts-seg { color: rgba(255, 255, 255, 0.85); }
+  td.lbx-final-lead .lbx-pts-total { border-top-color: rgba(255, 255, 255, 0.45); }
   .lbx-names { font-weight: 600; color: var(--green-dark); }
   .lbx-matchnum { font-size: 0.72rem; color: var(--muted); }
   .lbx-match { min-width: 200px; }
@@ -208,7 +212,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07d';
+const LIVE_VERSION = '2026-09-07e';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -1105,6 +1109,15 @@ function lbxSegBadgeHtml(label, seg, aName, bName) {
   const text = segStatusTextWithName(seg, aName, bName);
   return `<div class="lbx-seg"><span class="lbx-seg-label">${escapeHtml(label)}:</span> <span class="status-badge ${cls}">${escapeHtml(text)}</span></div>`;
 }
+// One side's points column as a stack lining up with the segment badges next
+// to it — a line per segment (blank dash until that segment is final, so
+// "not decided yet" never looks like "0 points"), then a bold total line
+// separated by a rule, matching the grand total row at the bottom of the
+// table.
+function lbxPtsStackHtml(segs, side, total) {
+  const segLines = segs.map((s) => `<div class="lbx-pts-seg">${s.final ? formatPts(s.points[side]) : '&ndash;'}</div>`).join('');
+  return `${segLines}<div class="lbx-pts-total">${formatPts(total)}</div>`;
+}
 // Per-match segment breakdown, shared by the per-day leaderboard and the
 // Tournament Total's day-by-day totals — returns each segment's result plus
 // that match's points, without touching the DOM. segNames pairs with segs/
@@ -1156,11 +1169,11 @@ async function loadLeaderboardView(day) {
     const pairB = `${lastName(row.TeamB_P1)} + ${lastName(row.TeamB_P2)}`;
     const segBadges = segs.map((s, i) => lbxSegBadgeHtml(segLabels[i], s, segNames[i][0], segNames[i][1])).join('');
     return `<tr>
-      <td class="lbx-pts ${leadClassA} ${tiedClass}">${formatPts(ptsA)}</td>
+      <td class="lbx-pts ${leadClassA} ${tiedClass}">${lbxPtsStackHtml(segs, 'A', ptsA)}</td>
       <td class="lbx-pair ${leadClassA} ${tiedClass}"><div class="lbx-names">${escapeHtml(pairA)}</div><div class="lbx-matchnum">Match ${escapeHtml(row.MatchNum)}</div></td>
       <td class="lbx-match">${segBadges}</td>
       <td class="lbx-pair ${leadClassB} ${tiedClass}"><div class="lbx-names">${escapeHtml(pairB)}</div><div class="lbx-matchnum">Match ${escapeHtml(row.MatchNum)}</div></td>
-      <td class="lbx-pts ${leadClassB} ${tiedClass}">${formatPts(ptsB)}</td>
+      <td class="lbx-pts ${leadClassB} ${tiedClass}">${lbxPtsStackHtml(segs, 'B', ptsB)}</td>
     </tr>`;
   }).join('');
 
