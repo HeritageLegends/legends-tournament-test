@@ -40,10 +40,11 @@
   button.secondary { background: #fff; color: var(--green); border: 1px solid var(--green); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
   .view-toggle-btn { background: #fff; border: 1.5px solid var(--border); color: var(--green-dark); padding: 7px 16px; border-radius: 20px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
   .view-toggle-btn.active { background: var(--green); color: #fff; border-color: var(--green); }
-  .hbh-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .hbh-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
   .hbh-nav select { flex: 1; }
   .hbh-nav button { padding: 10px 16px; font-size: 1.1rem; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; cursor: pointer; flex-shrink: 0; }
   .hbh-nav button:disabled { opacity: 0.35; }
+  .hbh-save-next { flex: 1 1 150px; padding: 10px 12px !important; font-size: 0.85rem !important; font-weight: 700; line-height: 1.2 !important; white-space: normal; background: var(--green) !important; color: #fff; border: none !important; }
   .hbh-seglabel { text-align: center; font-weight: 600; color: var(--muted); font-size: 0.82rem; margin: 2px 0 8px; }
   .hbh-stroke-note { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
   .hbh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-left: 4px; }
@@ -186,7 +187,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07j';
+const LIVE_VERSION = '2026-09-07k';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -534,16 +535,18 @@ function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName) {
 }
 
 // One hole at a time — just this match's players/teams, big touch-friendly
-// tap targets, no horizontal scrolling. The nav row (‹ Hole N ›) sits right
-// above the pick buttons on its own compact line, so a team-vs-team hole
-// (Day 1, or Day 2 Best Ball) is effectively one line of controls: nav, then
-// the three "<Team> Wins" / "Tie" / "<Team> Wins" buttons. Prev/Next (or the
-// dropdown) move between holes; the status lines above update live.
+// tap targets, no horizontal scrolling. The nav row (‹, the hole dropdown,
+// and a "Save and move to hole N" button in place of a bare › arrow) sits
+// right above the pick buttons. Picking a result never moves you on by
+// itself — only that explicit button does, so you can review a hole before
+// committing to the next one. Prev (‹) and the dropdown just navigate
+// without forcing a save first.
 function renderHoleByHole(day, matchNum) {
   const wrap = document.getElementById('scGridWrap');
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
   const names = teamNames();
   const h = scHoleIndex + 1; // 1-based hole number
+  const nextH = (h % 18) + 1; // wraps 18 -> 1, same as stepHole(1)
   const holeRow = currentHoles[scHoleIndex];
   const segLabel = h <= 9
     ? (day === '2' ? 'Best Ball (front 9)' : "Captain's Choice (front 9)")
@@ -570,11 +573,11 @@ function renderHoleByHole(day, matchNum) {
           return `<option value="${i}" ${i === scHoleIndex ? 'selected' : ''}>Hole ${i + 1}${p ? ` (Par ${escapeHtml(String(p))})` : ''}</option>`;
         }).join('')}
       </select>
-      <button type="button" onclick="stepHole(1)">›</button>
+      <button type="button" class="hbh-save-next" onclick="saveAndAdvance('${day}', '${matchNum}')">Save and move to hole ${nextH}</button>
     </div>
     <div class="hbh-seglabel">${escapeHtml(segLabel)}</div>
     ${blocksHtml}
-    <p class="hint" style="margin-top:10px;">Pick a result and it saves and moves on to the next hole right away — no need to hit Save Now or the arrows yourself. On a shotgun start, jump straight to whichever hole your group just finished; Prev/Next (and the dropdown) wrap from 18 back to 1 and vice versa.</p>
+    <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that.</p>
   `;
 
   wrap.querySelectorAll('.wpick-btn').forEach((btn) => {
@@ -583,18 +586,7 @@ function renderHoleByHole(day, matchNum) {
       const val = btn.dataset.wval;
       const current = currentHoles[scHoleIndex][field];
       // Tapping the already-selected choice clears it back to "not entered".
-      const cleared = current === val;
-      currentHoles[scHoleIndex][field] = cleared ? '' : val;
-      // Once this tap leaves the whole hole filled in (both Match Play
-      // matchups too, not just this one) save immediately and jump ahead to
-      // the next hole — a scorekeeper can enter a whole round without ever
-      // touching Save Now or the arrows. Clearing a mistake, or finishing
-      // only one of Day 2's two Match Play matchups, stays put instead.
-      if (!cleared && !holeIsBlank(day, currentHoles[scHoleIndex])) {
-        saveCurrentMatch(day, matchNum, currentHoles);
-        stepHole(1);
-        return;
-      }
+      currentHoles[scHoleIndex][field] = current === val ? '' : val;
       renderHoleByHole(day, matchNum);
       renderStatusLines(day, matchNum, pairingRow);
       scheduleAutosave(day, matchNum);
@@ -602,6 +594,14 @@ function renderHoleByHole(day, matchNum) {
   });
 
   renderStatusLines(day, matchNum, pairingRow);
+}
+
+// The nav row's primary action — saves whatever's on screen right now
+// (bypassing the autosave debounce) and then moves ahead to the next hole,
+// wrapping 18 -> 1 same as stepHole(1).
+function saveAndAdvance(day, matchNum) {
+  saveCurrentMatch(day, matchNum, currentHoles);
+  stepHole(1);
 }
 
 // Wraps 18 -> 1 and 1 -> 18 rather than stopping at the ends — a shotgun
