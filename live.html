@@ -56,6 +56,11 @@
   .hbh-progress-unsaved { background: #fff3cd; color: #8a6300; border-color: #f0d580; }
   .hbh-progress-saved { background: var(--win); color: var(--green-dark); }
   .hbh-progress-current { border-color: var(--green-dark); box-shadow: 0 0 0 1.5px var(--green-dark); }
+  /* This match's own scorecard, mirrored onto the entry screen below the
+     pick buttons — same progression-strip look as Scoreboard → All Match
+     Scorecards. */
+  .hbh-mirror-scorecard { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .hbh-mirror-title { font-weight: 600; color: var(--green-dark); margin-bottom: 6px; font-size: 0.95rem; }
   .hbh-stroke-note { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
   .hbh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-left: 4px; }
 
@@ -103,8 +108,9 @@
   .sc-collapsed-match { border-bottom: 1px solid var(--border); padding: 12px 0; }
   .sc-collapsed-match:last-child { border-bottom: none; }
   .match-title { font-weight: 600; color: var(--green-dark); margin-bottom: 4px; }
-  .prog-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
-  .prog-seg-label { width: 160px; flex-shrink: 0; font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+  .prog-row { margin: 10px 0; }
+  .prog-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+  .prog-seg-label { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
   .prog-strip { display: flex; gap: 3px; overflow-x: auto; }
   .prog-chip { position: relative; flex-shrink: 0; width: 40px; text-align: center; border-radius: 6px; padding: 3px 2px; font-size: 0.72rem; }
   .prog-chip.prog-a { background: var(--win); color: var(--green-dark); }
@@ -170,7 +176,7 @@
     <div class="card">
       <div class="row" id="sbViewToggle">
         <button type="button" class="view-toggle-btn active" data-sbview="leaderboard" onclick="setSbView('leaderboard')">Leaderboard</button>
-        <button type="button" class="view-toggle-btn" data-sbview="scorecards" onclick="setSbView('scorecards')">Match Scorecards</button>
+        <button type="button" class="view-toggle-btn" data-sbview="scorecards" onclick="setSbView('scorecards')">All Match Scorecards</button>
         <button type="button" class="view-toggle-btn" data-sbview="individual" onclick="setSbView('individual')">Individual Results</button>
       </div>
       <div class="row" style="justify-content:space-between;">
@@ -201,7 +207,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07n';
+const LIVE_VERSION = '2026-09-07o';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -640,6 +646,18 @@ function renderHoleByHole(day, matchNum) {
     blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B, saveBtnHtml);
   }
 
+  // A mirror of this one match's Scoreboard → All Match Scorecards entry,
+  // right here on the entry screen — reads straight off `currentHoles`, the
+  // same in-memory data the pick buttons and status lines use, so it
+  // updates the instant you tap something rather than only after a save.
+  const { segs: mirrorSegs, segNames: mirrorSegNames } = segmentInfoFromHoles(day, pairingRow, currentHoles);
+  const mirrorScorecardHtml = `
+    <div class="hbh-mirror-scorecard">
+      <div class="hbh-mirror-title">This Match's Scorecard</div>
+      ${scorecardProgRowsHtml(day, pairingRow, currentHoles, mirrorSegs, mirrorSegNames)}
+    </div>
+  `;
+
   wrap.innerHTML = `
     <div class="hbh-nav">
       <button type="button" onclick="stepHole(-1)">‹</button>
@@ -654,6 +672,7 @@ function renderHoleByHole(day, matchNum) {
     <div class="hbh-seglabel">${escapeHtml(segLabel)}</div>
     ${blocksHtml}
     <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save now and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that. The row of hole numbers above shows what's actually confirmed: grey means nothing's entered, yellow means it's entered here but not yet confirmed saved, green means it's saved — tap any number to jump to that hole.</p>
+    ${mirrorScorecardHtml}
   `;
 
   wrap.querySelectorAll('.hbh-progress-dot').forEach((dot) => {
@@ -941,14 +960,20 @@ function segStatusTextWithName(seg, aName, bName) {
   const leadName = seg.leader === 'A' ? aName : bName;
   return seg.text.replace(/(\d+ up)/, `${leadName} $1`);
 }
-// One compact badge per segment (e.g. "Captain's Choice: Final — Stewart +
-// Davis 2 up"), reusing the same colored status-badge look as the Live
-// Scoring status lines — stacked in the leaderboard row's middle "Match"
-// column.
-function lbxSegBadgeHtml(label, seg, aName, bName) {
+// The colored pill by itself (e.g. "Stewart + Davis 2 up") — same look as
+// the Live Scoring status lines, reused anywhere a segment's current
+// leader/margin needs to be named rather than only color-coded: the
+// leaderboard's per-segment badges, the Match Scorecards progression rows,
+// and the mirrored scorecard on the Live Scoring page.
+function segStatusBadgeHtml(seg, aName, bName) {
   const cls = seg.leader === 'A' ? 'a' : seg.leader === 'B' ? 'b' : seg.leader === 'Half' ? 'half' : 'pending';
   const text = segStatusTextWithName(seg, aName, bName);
-  return `<div class="lbx-seg"><span class="lbx-seg-label">${escapeHtml(label)}:</span> <span class="status-badge ${cls}">${escapeHtml(text)}</span></div>`;
+  return `<span class="status-badge ${cls}">${escapeHtml(text)}</span>`;
+}
+// One compact badge per segment (e.g. "Captain's Choice: Final — Stewart +
+// Davis 2 up"), stacked in the leaderboard row's middle "Match" column.
+function lbxSegBadgeHtml(label, seg, aName, bName) {
+  return `<div class="lbx-seg"><span class="lbx-seg-label">${escapeHtml(label)}:</span> ${segStatusBadgeHtml(seg, aName, bName)}</div>`;
 }
 // One side's points column as a stack lining up with the segment badges next
 // to it — a line per segment (blank dash until that segment is final, so
@@ -959,12 +984,14 @@ function lbxPtsStackHtml(segs, side, total) {
   const segLines = segs.map((s) => `<div class="lbx-pts-seg">${s.final ? formatPts(s.points[side]) : '&ndash;'}</div>`).join('');
   return `${segLines}<div class="lbx-pts-total">${formatPts(total)}</div>`;
 }
-// Per-match segment breakdown, shared by the per-day leaderboard and the
-// Two Day Total's day-by-day totals — returns each segment's result plus
-// that match's points, without touching the DOM. segNames pairs with segs/
-// segLabels — the [A-side name, B-side name] to use when naming who's up.
-function matchSegmentInfo(day, row, scoresByMatch) {
-  const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
+// Computes segs/segLabels/segNames from an already-built 18-hole grid —
+// split out of matchSegmentInfo below so the same computation can run
+// directly on the Live Scoring page's own `currentHoles` (see
+// scorecardProgRowsHtml's use in renderHoleByHole) without needing a
+// separate fetch of saved scores — it reflects taps as they happen, not
+// just what's been saved. segNames pairs with segs/segLabels — the [A-side
+// name, B-side name] to use when naming who's up.
+function segmentInfoFromHoles(day, row, holeRows) {
   let segs, segLabels, segNames;
   if (day === '2') {
     segs = [computeDay2BestBall(row, holeRows), computeDay2MatchPlay(row, holeRows, 1), computeDay2MatchPlay(row, holeRows, 2)];
@@ -980,6 +1007,14 @@ function matchSegmentInfo(day, row, scoresByMatch) {
     const pairA = pairName(row.TeamA_P1, row.TeamA_P2), pairB = pairName(row.TeamB_P1, row.TeamB_P2);
     segNames = [[pairA, pairB], [pairA, pairB]];
   }
+  return { segs, segLabels, segNames };
+}
+// Per-match segment breakdown, shared by the per-day leaderboard and the
+// Two Day Total's day-by-day totals — returns each segment's result plus
+// that match's points, without touching the DOM.
+function matchSegmentInfo(day, row, scoresByMatch) {
+  const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
+  const { segs, segLabels, segNames } = segmentInfoFromHoles(day, row, holeRows);
   let ptsA = 0, ptsB = 0;
   segs.forEach((s) => { if (s.final) { ptsA += s.points.A; ptsB += s.points.B; } });
   return { holeRows, segs, segLabels, segNames, ptsA, ptsB };
@@ -1243,24 +1278,36 @@ function progressionStripHtml(results, activeStart) {
   return cells;
 }
 
-function scorecardsCollapsedHtml(day, row, scoresByMatch) {
-  const { holeRows } = matchSegmentInfo(day, row, scoresByMatch);
-  const rowsDef = day === '2'
+// Shared by the Scoreboard's "All Match Scorecards" and the mirrored
+// per-match scorecard on the Live Scoring page — one strip per format
+// segment, each headed by its label plus a colored, named status badge
+// (e.g. "Kusilek 2 up") so who's up is never color-only.
+function scorecardRowsDef(day, row, holeRows, segs, segNames) {
+  return day === '2'
     ? [
-        ['Best Ball (front 9)', day2BestBallPerHoleResults(row, holeRows), 1],
-        [`Match Play: ${row.MP1_TeamA || '?'} vs ${row.MP1_TeamB || '?'}`, day2MatchPlayPerHoleResults(row, holeRows, 1), 10],
-        [`Match Play: ${row.MP2_TeamA || '?'} vs ${row.MP2_TeamB || '?'}`, day2MatchPlayPerHoleResults(row, holeRows, 2), 10],
+        ['Best Ball (front 9)', day2BestBallPerHoleResults(row, holeRows), 1, segs[0], segNames[0]],
+        [`Match Play: ${row.MP1_TeamA || '?'} vs ${row.MP1_TeamB || '?'}`, day2MatchPlayPerHoleResults(row, holeRows, 1), 10, segs[1], segNames[1]],
+        [`Match Play: ${row.MP2_TeamA || '?'} vs ${row.MP2_TeamB || '?'}`, day2MatchPlayPerHoleResults(row, holeRows, 2), 10, segs[2], segNames[2]],
       ]
     : [
-        ["Captain's Choice (front 9)", day1PerHoleResults(holeRows, 1, 9), 1],
-        ['Modified Alt Shot (back 9)', day1PerHoleResults(holeRows, 10, 18), 10],
+        ["Captain's Choice (front 9)", day1PerHoleResults(holeRows, 1, 9), 1, segs[0], segNames[0]],
+        ['Modified Alt Shot (back 9)', day1PerHoleResults(holeRows, 10, 18), 10, segs[1], segNames[1]],
       ];
-  const progRows = rowsDef.map(([label, results, start]) => `
+}
+function scorecardProgRowsHtml(day, row, holeRows, segs, segNames) {
+  return scorecardRowsDef(day, row, holeRows, segs, segNames).map(([label, results, start, seg, names]) => `
     <div class="prog-row">
-      <div class="prog-seg-label">${escapeHtml(label)}</div>
+      <div class="prog-row-head">
+        <div class="prog-seg-label">${escapeHtml(label)}</div>
+        ${segStatusBadgeHtml(seg, names[0], names[1])}
+      </div>
       <div class="prog-strip">${progressionStripHtml(results, start)}</div>
     </div>
   `).join('');
+}
+function scorecardsCollapsedHtml(day, row, scoresByMatch) {
+  const { holeRows, segs, segNames } = matchSegmentInfo(day, row, scoresByMatch);
+  const progRows = scorecardProgRowsHtml(day, row, holeRows, segs, segNames);
   return `<div class="sc-collapsed-match"><div class="match-title">${escapeHtml(matchLabel(day, row))}</div>${progRows}</div>`;
 }
 
