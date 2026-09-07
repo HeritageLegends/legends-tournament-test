@@ -148,6 +148,22 @@
         <div id="adminPinStatus" class="status"></div>
       </div>
 
+      <div class="card">
+        <h2>Lock Match Results</h2>
+        <p class="hint">Once a day's play is finished, lock it to freeze every match's results on Live Scoring — scorekeepers can no longer add or change scores for that day (the Scoreboard stays visible either way). Unlock if you need to fix something after the fact.</p>
+        <div class="field-row" style="align-items:center; gap:32px;">
+          <div>
+            <strong>Day 1:</strong> <span id="day1LockLabel" class="hint">Unlocked</span>
+            <button class="secondary" id="day1LockBtn" onclick="toggleDayLock('1')" style="margin-left:10px;">Lock Day 1</button>
+          </div>
+          <div>
+            <strong>Day 2:</strong> <span id="day2LockLabel" class="hint">Unlocked</span>
+            <button class="secondary" id="day2LockBtn" onclick="toggleDayLock('2')" style="margin-left:10px;">Lock Day 2</button>
+          </div>
+        </div>
+        <div id="dayLockStatus" class="status"></div>
+      </div>
+
       <div class="card" style="border: 1px solid #c0392b;">
         <h2 style="color:#c0392b;">Start New Season</h2>
         <p class="hint">Once this year's tournament is over and you're ready to set up next year's: this archives everything from this season (settings, roster, pairings, scores) into hidden backup tabs in the Google Sheet, then clears pairings and scores and resets every player's team back to unassigned so you can start fresh. Player names, handicaps and tees stay as they are — no need to re-enter the roster. The Hole Handicaps table also stays as-is (only re-enter it if you're changing courses).</p>
@@ -282,7 +298,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-06l';
+const ADMIN_VERSION = '2026-09-07a';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -467,7 +483,41 @@ function populateSettingsForm() {
   document.getElementById('s_TeamBCaptain').value = settings.TeamBCaptain || '';
   document.getElementById('s_AdminPIN').value = settings.AdminPIN || '';
   document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament';
+  updateDayLockUI();
   refreshPairingHeaders();
+}
+
+// Mirrors isDayLocked_ in Code.gs / dayIsLocked in live.html.
+function dayIsLocked(day) {
+  const v = settings[day === '2' ? 'Day2Locked' : 'Day1Locked'];
+  return v === true || v === 'TRUE' || v === 'true';
+}
+function updateDayLockUI() {
+  ['1', '2'].forEach((day) => {
+    const locked = dayIsLocked(day);
+    document.getElementById(`day${day}LockLabel`).textContent = locked ? 'Locked' : 'Unlocked';
+    document.getElementById(`day${day}LockLabel`).style.color = locked ? '#c0392b' : '';
+    document.getElementById(`day${day}LockLabel`).style.fontWeight = locked ? '700' : '400';
+    document.getElementById(`day${day}LockBtn`).textContent = locked ? `Unlock Day ${day}` : `Lock Day ${day}`;
+  });
+}
+// Only the one Locked key is included, same pattern as saveAdminPin — leaves
+// every other setting (including the other day's lock) untouched.
+async function toggleDayLock(day) {
+  const key = day === '2' ? 'Day2Locked' : 'Day1Locked';
+  const newValue = dayIsLocked(day) ? 'FALSE' : 'TRUE';
+  try {
+    const res = await apiPost('saveSettings', { settings: JSON.stringify({ [key]: newValue }) });
+    if (res.success) {
+      settings = res.data;
+      updateDayLockUI();
+      showStatus('dayLockStatus', true, newValue === 'TRUE' ? `Day ${day} locked — results are now frozen on Live Scoring.` : `Day ${day} unlocked — results can be edited again.`);
+    } else {
+      showStatus('dayLockStatus', false, res.error);
+    }
+  } catch (err) {
+    showStatus('dayLockStatus', false, 'Network error: ' + err.message);
+  }
 }
 
 async function saveSettings() {
@@ -819,31 +869,63 @@ function strokesOnHolePrint(handicapIndex, strokeIndex) {
   const extra = (si <= (rounded % 18)) ? 1 : 0;
   return base + extra;
 }
-// A blank row of 18 hole cells (plus OUT/IN/TOT) for writing in "W"/"L"/"T"
-// by hand — used on both days' printed scorecards. Holes outside
-// [activeStart, activeEnd] are shaded (not blank-but-writable) since a W/L/T
-// row that only covers one segment (e.g. Day 2's back-nine Match Play) isn't
-// meaningful for the other segment's holes; TOT is shaded unless the row
-// covers the full round, since a partial-segment tally has no round total.
-function wltCellsHtml(activeStart, activeEnd, startHoleNum) {
-  const fullRange = activeStart === 1 && activeEnd === 18;
+// A blank row of hole cells for writing in "W" or "T" by hand — the single,
+// primary result-entry mechanism on the redesigned scorecard (no gross
+// scores anywhere). startHole/endHole is just this segment's own 9 holes.
+function blankWtCellsHtml(startHole, endHole, startHoleNum) {
   let cells = '';
-  for (let h = 1; h <= 18; h++) {
-    const segClass = h === 10 ? 'seg' : '';
-    const isActive = h >= activeStart && h <= activeEnd;
-    const startClass = (isActive && h === startHoleNum) ? ' sc-start-hole' : '';
-    cells += `<td class="${segClass}${startClass}${isActive ? '' : ' sc-na'}"></td>`;
-    if (h === 9) cells += `<td class="sc-sum${isActive ? '' : ' sc-na'}"></td>`;
-    if (h === 18) cells += `<td class="sc-sum${isActive ? '' : ' sc-na'}"></td><td class="sc-sum${fullRange ? '' : ' sc-na'}"></td>`;
+  for (let h = startHole; h <= endHole; h++) {
+    const startClass = h === startHoleNum ? ' sc-start-hole' : '';
+    cells += `<td class="${startClass}"></td>`;
   }
   return cells;
 }
-// A row above the hole-number header labeling each 9 by its format (e.g.
-// "Front 9: Captain's Choice" / "Back 9: Modified Alternate Shot"). Column
-// counts match holeHeaderCells: holes 1-9 + OUT = 10 columns, holes 10-18 +
-// IN + TOT = 11 columns, plus the leading name column.
-function segmentHeaderRowHtml(frontLabel, backLabel) {
-  return `<tr class="sc-segrow"><th class="sc-name"></th><th colspan="10">${escapeHtml(frontLabel)}</th><th colspan="11">${escapeHtml(backLabel)}</th></tr>`;
+// A spacer row between one team's block of rows and the next, matching the
+// segment table's own column count (1 name column + 9 hole columns).
+function segSpacerRowHtml() {
+  return '<tr class="sc-spacer"><td colspan="10" style="border:none; padding:6px 0;"></td></tr>';
+}
+// Builds one 9-hole segment's whole card: its title/instruction, a table
+// with real hole numbers for that 9 (1-9 or 10-18) plus the always-shown
+// Par/Gold Handicap/Red Handicap reference rows, whatever segment-specific
+// rows the caller supplies, and a "Circle Winning Team" ballot alongside it
+// for marking the segment's overall winner once all holes are in — shared
+// by both days' front-9/back-9 segments.
+function printSegmentHtml(segLabel, instruction, startHole, endHole, startHoleNum, rowsHtml, colHeadLabel, teamNamesAB) {
+  const hasPar = holeHandicaps.some((h) => h.Par !== '' && h.Par != null);
+  let holeHeaderCells = '', parCells = '', hcpCells = '', hcpRedCells = '';
+  for (let h = startHole; h <= endHole; h++) {
+    const hh = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
+    const hhRed = holeHandicapsRed.find((r) => Number(r.Hole) === h) || {};
+    const startClass = h === startHoleNum ? ' sc-start-hole' : '';
+    holeHeaderCells += `<th class="${startClass}">${h}</th>`;
+    parCells += `<td class="${startClass}">${hh.Par || ''}</td>`;
+    hcpCells += `<td class="${startClass}">${hh.StrokeIndex || ''}</td>`;
+    hcpRedCells += `<td class="${startClass}">${hhRed.StrokeIndex || ''}</td>`;
+  }
+  const circleHtml = [teamNamesAB[0], 'Tie', teamNamesAB[1]]
+    .map((n) => `<div class="sc-circle-row"><span class="sc-circle"></span>${escapeHtml(n)}</div>`).join('');
+  return `
+    <div class="sc-segment">
+      <div class="sc-seg-title">${escapeHtml(segLabel)}</div>
+      <div class="sc-seg-instr">${escapeHtml(instruction)}</div>
+      <div class="sc-seg-layout">
+        <table class="sc-table sc-seg-table">
+          <thead><tr><th class="sc-name">${escapeHtml(colHeadLabel)}</th>${holeHeaderCells}</tr></thead>
+          <tbody>
+            ${hasPar ? `<tr class="sc-meta"><td class="sc-name">PAR</td>${parCells}</tr>` : ''}
+            <tr class="sc-meta"><td class="sc-name">Gold Handicap</td>${hcpCells}</tr>
+            <tr class="sc-meta"><td class="sc-name">Red Handicap</td>${hcpRedCells}</tr>
+            ${rowsHtml}
+          </tbody>
+        </table>
+        <div class="sc-circle-box">
+          <div class="sc-circle-title">Circle Winning Team</div>
+          ${circleHtml}
+        </div>
+      </div>
+    </div>
+  `;
 }
 // Pulls the leading hole number out of a Start Hole value like "18a" or "18b"
 // (or a plain "5") so that hole's header box can be highlighted — returns
@@ -890,93 +972,73 @@ const PRINT_CSS = `
   table.sc-table th, table.sc-table td { border: 1px solid #999; padding: 5px 2px; text-align: center; min-width: 22px; }
   table.sc-table th.sc-name, table.sc-table td.sc-name { text-align: left; padding: 5px 8px; white-space: nowrap; font-weight: 600; min-width: 130px; }
   tr.sc-meta td { font-weight: 600; background: #f2f2f2; }
-  td.sc-sum, th.sc-sum { background: #fafafa; }
   .sc-dots { color: #b3261e; font-weight: 700; letter-spacing: 1px; }
   .sc-tee { font-weight: 400; color: #666; font-size: 0.85em; }
-  tr.sc-wlt td { border-top: none; }
-  tr.sc-wlt td.sc-name { font-style: italic; color: #666; font-weight: 400; font-size: 0.85em; padding-top: 1px; padding-bottom: 6px; }
-  .sc-na { background: #ececec; }
   .sc-start-hole { background: #fff176; }
-  tr.sc-segrow th { background: #e4e4e4; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; text-align: center; }
-  .seg { border-left: 2px solid #333; }
   .sc-note { font-size: 0.78rem; color: #555; margin-top: 10px; }
   .sc-sample-badge { display: inline-block; background: #fff3cd; color: #7a5b00; border: 1px solid #e6c866; border-radius: 4px; padding: 3px 10px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em; margin-bottom: 8px; }
   .print-bar { margin-bottom: 20px; }
   .print-bar button { font-size: 0.95rem; padding: 8px 16px; cursor: pointer; }
   @media print { .print-bar { display: none; } }
+
+  /* ---- Redesigned scorecard: one 9-hole segment table + its own
+     "Circle Winning Team" ballot, no gross-score entry anywhere. ---- */
+  .sc-segment { margin-top: 16px; page-break-inside: avoid; }
+  .sc-seg-title { font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.02em; color: #123c26; margin-bottom: 2px; }
+  .sc-seg-instr { font-size: 0.82rem; color: #444; font-style: italic; margin-bottom: 6px; }
+  .sc-seg-layout { display: flex; gap: 16px; align-items: flex-start; }
+  table.sc-seg-table { flex: 1; margin-top: 0; }
+  .sc-circle-box { flex-shrink: 0; border: 1px solid #999; border-radius: 6px; padding: 8px 14px; min-width: 150px; }
+  .sc-circle-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: #444; margin-bottom: 6px; }
+  .sc-circle-row { font-size: 0.85rem; display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .sc-circle { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #333; flex-shrink: 0; }
 `;
 
+// Day 2: Front 9 is Best Ball (2v2 team result), Back 9 is Individual Match
+// Play — two separate 1-on-1s happening at once, kept as two rows per team
+// (one per player matchup) rather than one combined row. No gross scores
+// anywhere — each player's per-hole dots are just a reference for judging
+// net results fairly; the blank boxes below are where the actual result
+// gets written directly.
 function scorecardCardHtml(row, rosterList, isSample) {
   rosterList = rosterList || roster;
   const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
-  const hasPar = holeHandicaps.some((h) => h.Par !== '' && h.Par != null);
-  const players = [
-    ['TeamA_P1', row.TeamA_P1], ['TeamA_P2', row.TeamA_P2],
-    ['TeamB_P1', row.TeamB_P1], ['TeamB_P2', row.TeamB_P2],
-  ];
-  // Red tees use a different Stroke Index than everyone else — if anyone in
-  // this match is on Red, show a second legend row so the numbers on the
-  // sheet always match what each player's own row is actually using.
-  const anyRed = players.some(([, name]) => {
-    const p = rosterList.find((r) => r.Name === name);
-    return p && (p.Tee || '').trim().toLowerCase() === 'red';
-  });
   const startHoleNum = startHoleNumberOf(row.StartHole);
-  let holeHeaderCells = '';
-  let parCells = '';
-  let hcpCells = '';
-  let hcpRedCells = '';
-  for (let h = 1; h <= 18; h++) {
-    const hh = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
-    const hhRed = holeHandicapsRed.find((r) => Number(r.Hole) === h) || {};
-    const segClass = h === 10 ? 'seg' : '';
-    const startClass = h === startHoleNum ? ' sc-start-hole' : '';
-    holeHeaderCells += `<th class="${segClass}${startClass}">${h}</th>`;
-    parCells += `<td class="${segClass}${startClass}">${hh.Par || ''}</td>`;
-    hcpCells += `<td class="${segClass}${startClass}">${hh.StrokeIndex || ''}</td>`;
-    hcpRedCells += `<td class="${segClass}${startClass}">${hhRed.StrokeIndex || ''}</td>`;
-    if (h === 9) { holeHeaderCells += '<th class="sc-sum">OUT</th>'; parCells += '<td class="sc-sum"></td>'; hcpCells += '<td class="sc-sum"></td>'; hcpRedCells += '<td class="sc-sum"></td>'; }
-    if (h === 18) { holeHeaderCells += '<th class="sc-sum">IN</th><th class="sc-sum">TOT</th>'; parCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; hcpCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; hcpRedCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; }
-  }
-  const playerRowHtml = (name) => {
+  const instruction = 'Enter W for Winning Team or T for a Tie.';
+
+  // A player's dots for just this segment's own holes; the (tee, N strokes)
+  // label always reflects their full 18-hole Course Handicap, so it reads
+  // the same whichever segment table you're looking at.
+  const playerDotsRowHtml = (name, startHole, endHole) => {
     const p = rosterList.find((r) => r.Name === name);
     const hc = p ? courseHandicap(p.HandicapIndex, p.Tee) : '';
     const tee = p ? p.Tee : '';
-    let cells = '';
-    let strokesTotal = 0;
-    for (let h = 1; h <= 18; h++) {
-      const si = strokeIndexForTee(tee, h);
-      const strokes = name ? strokesOnHolePrint(hc, si) : 0;
-      strokesTotal += strokes;
+    let cells = '', strokesTotal = 0;
+    for (let h = startHole; h <= endHole; h++) {
+      const strokes = name ? strokesOnHolePrint(hc, strokeIndexForTee(tee, h)) : 0;
       const dots = strokes > 0 ? `<span class="sc-dots">${'&bull;'.repeat(strokes)}</span>` : '';
-      const segClass = h === 10 ? 'seg' : '';
       const startClass = h === startHoleNum ? ' sc-start-hole' : '';
-      cells += `<td class="${segClass}${startClass}">${dots}</td>`;
-      if (h === 9) cells += '<td class="sc-sum"></td>';
-      if (h === 18) cells += '<td class="sc-sum"></td><td class="sc-sum"></td>';
+      cells += `<td class="${startClass}">${dots}</td>`;
     }
-    // Course handicap (total strokes across all 18) shown right next to the
-    // tee, so it's easy to sanity-check against what's in the Roster instead
-    // of having to count dots by hand.
+    for (let h = 1; h <= 18; h++) strokesTotal += name ? strokesOnHolePrint(hc, strokeIndexForTee(tee, h)) : 0;
     const strokesLabel = strokesTotal > 0 ? `${strokesTotal} stroke${strokesTotal === 1 ? '' : 's'}` : '';
     const parenBits = [tee, strokesLabel].filter(Boolean).join(', ');
     const teeHtml = parenBits ? ` <span class="sc-tee">(${escapeHtml(parenBits)})</span>` : '';
     return `<tr><td class="sc-name">${escapeHtml(name || '(unassigned)')}${teeHtml}</td>${cells}</tr>`;
   };
 
-  // Each team's block is its own two player rows followed by its own three
-  // W/L/T rows (Best Ball, then one Match Play row per player) — Best Ball
-  // is 2v2 so both of a team's players share that row; each Match Play row
-  // is that specific player's own 1-on-1 (back 9 only — see wltCellsHtml).
-  const teamBlockHtml = (teamName, p1, p2) => {
-    const wltRows = [
-      [`${escapeHtml(teamName)} - Best Ball`, wltCellsHtml(1, 9, startHoleNum)],
-      [`${escapeHtml(teamName)} - Match Play - ${escapeHtml(lastName(p1))}`, wltCellsHtml(10, 18, startHoleNum)],
-      [`${escapeHtml(teamName)} - Match Play - ${escapeHtml(lastName(p2))}`, wltCellsHtml(10, 18, startHoleNum)],
-    ].map(([label, cells]) => `<tr class="sc-wlt"><td class="sc-name">W/L/T &mdash; ${label}</td>${cells}</tr>`).join('');
-    return `${playerRowHtml(p1)}${playerRowHtml(p2)}${wltRows}`;
-  };
-  const spacerRowHtml = '<tr class="sc-spacer"><td colspan="22" style="border:none; padding:6px 0;"></td></tr>';
+  const frontRows = [[names.A, row.TeamA_P1, row.TeamA_P2], [names.B, row.TeamB_P1, row.TeamB_P2]]
+    .map(([teamName, p1, p2]) => playerDotsRowHtml(p1, 1, 9) + playerDotsRowHtml(p2, 1, 9)
+      + `<tr><td class="sc-name">${escapeHtml(teamName)} &mdash; Best Ball</td>${blankWtCellsHtml(1, 9, startHoleNum)}</tr>`)
+    .join(segSpacerRowHtml());
+  const backRows = [[names.A, row.TeamA_P1, row.TeamA_P2], [names.B, row.TeamB_P1, row.TeamB_P2]]
+    .map(([teamName, p1, p2]) => playerDotsRowHtml(p1, 10, 18) + playerDotsRowHtml(p2, 10, 18)
+      + `<tr><td class="sc-name">${escapeHtml(teamName)} &mdash; Match Play &mdash; ${escapeHtml(lastName(p1))}</td>${blankWtCellsHtml(10, 18, startHoleNum)}</tr>`
+      + `<tr><td class="sc-name">${escapeHtml(teamName)} &mdash; Match Play &mdash; ${escapeHtml(lastName(p2))}</td>${blankWtCellsHtml(10, 18, startHoleNum)}</tr>`)
+    .join(segSpacerRowHtml());
+
+  const frontSegment = printSegmentHtml('Front 9: Best Ball', instruction, 1, 9, startHoleNum, frontRows, 'Player', [names.A, names.B]);
+  const backSegment = printSegmentHtml('Back 9: Individual Match Play', instruction, 10, 18, startHoleNum, backRows, 'Player', [names.A, names.B]);
 
   return `
     <div class="scorecard">
@@ -985,70 +1047,40 @@ function scorecardCardHtml(row, rosterList, isSample) {
       <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
       ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
-      <table class="sc-table">
-        <thead>
-          ${segmentHeaderRowHtml("Front 9: Best Ball", "Back 9: Individual Match Play")}
-          <tr><th class="sc-name">Player</th>${holeHeaderCells}</tr>
-        </thead>
-        <tbody>
-          ${hasPar ? `<tr class="sc-meta"><td class="sc-name">Par</td>${parCells}</tr>` : ''}
-          <tr class="sc-meta"><td class="sc-name">Hcp</td>${hcpCells}</tr>
-          ${anyRed ? `<tr class="sc-meta"><td class="sc-name">Hcp (Red)</td>${hcpRedCells}</tr>` : ''}
-          ${teamBlockHtml(names.A, row.TeamA_P1, row.TeamA_P2)}
-          ${spacerRowHtml}
-          ${teamBlockHtml(names.B, row.TeamB_P1, row.TeamB_P2)}
-        </tbody>
-      </table>
-      <p class="sc-note">&bull; marks a hole where that player gets a handicap stroke (&bull;&bull; = two strokes) &mdash; write the gross score in the box, circle it when a stroke applies, for net. Each player's dots already use their own tee's Stroke Index${anyRed ? ' (Red players use the "Hcp (Red)" row above, everyone else uses "Hcp")' : ''}. The italic "W/L/T" rows under each team are optional, for writing in who won each hole by hand &mdash; Best Ball only covers the front 9, each Match Play row only the back 9 (shaded cells don't apply to that row).</p>
+      ${frontSegment}
+      ${backSegment}
+      <p class="sc-note">&bull; marks a hole where that player gets a handicap stroke (&bull;&bull; = two strokes) &mdash; each player's dots use their own tee's Stroke Index (Red players use the "Red Handicap" row above, everyone else uses "Gold Handicap"). Best Ball covers the front 9 only; each Match Play row covers the back 9 only. Write "W" or "T" in the box for each row on every hole, then circle the winning team (or Tie) at the end of each 9.</p>
     </div>
   `;
 }
 
 // Day 1's Captain's Choice (front 9) and Modified Alternate Shot (back 9) are
-// both one combined score per team per hole, not per player — so this is one
-// row per team instead of four, and no Hcp row/stroke dots (Day 1 doesn't use
-// handicaps at all). Still shows Par (if entered) and each team's two player
-// names — with each player's own Roster tee alongside their name, since two
-// teammates can play from different tees even on Day 1 (it just doesn't
-// affect their combined score the way it would on Day 2).
+// both one combined result per team per hole, not per player — so each team
+// gets just one row per segment (that row doubles as both the team's label
+// and its W/T entry boxes). Gold/Red Handicap rows are still shown for
+// reference even though no handicap strokes apply on Day 1.
 function scorecardCardHtmlDay1(row, rosterList, isSample) {
   rosterList = rosterList || roster;
   const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
-  const hasPar = holeHandicaps.some((h) => h.Par !== '' && h.Par != null);
   const startHoleNum = startHoleNumberOf(row.StartHole);
-  let holeHeaderCells = '';
-  let parCells = '';
-  for (let h = 1; h <= 18; h++) {
-    const hh = holeHandicaps.find((r) => Number(r.Hole) === h) || {};
-    const segClass = h === 10 ? 'seg' : '';
-    const startClass = h === startHoleNum ? ' sc-start-hole' : '';
-    holeHeaderCells += `<th class="${segClass}${startClass}">${h}</th>`;
-    parCells += `<td class="${segClass}${startClass}">${hh.Par || ''}</td>`;
-    if (h === 9) { holeHeaderCells += '<th class="sc-sum">OUT</th>'; parCells += '<td class="sc-sum"></td>'; }
-    if (h === 18) { holeHeaderCells += '<th class="sc-sum">IN</th><th class="sc-sum">TOT</th>'; parCells += '<td class="sc-sum"></td><td class="sc-sum"></td>'; }
-  }
-  const teamRows = [
-    [names.A, row.TeamA_P1, row.TeamA_P2],
-    [names.B, row.TeamB_P1, row.TeamB_P2],
-  ].map(([teamName, p1, p2]) => {
-    let cells = '';
-    for (let h = 1; h <= 18; h++) {
-      const segClass = h === 10 ? 'seg' : '';
-      const startClass = h === startHoleNum ? ' sc-start-hole' : '';
-      cells += `<td class="${segClass}${startClass}"></td>`;
-      if (h === 9) cells += '<td class="sc-sum"></td>';
-      if (h === 18) cells += '<td class="sc-sum"></td><td class="sc-sum"></td>';
-    }
-    const nameWithTee = (name) => {
-      if (!name) return '?';
-      const p = rosterList.find((r) => r.Name === name);
-      return p && p.Tee ? `${escapeHtml(name)} (${escapeHtml(p.Tee)})` : escapeHtml(name);
-    };
+  const instruction = 'Enter W for Winning Team or T for a Tie.';
+
+  const nameWithTee = (name) => {
+    if (!name) return '?';
+    const p = rosterList.find((r) => r.Name === name);
+    return p && p.Tee ? `${escapeHtml(name)} (${escapeHtml(p.Tee)})` : escapeHtml(name);
+  };
+  const teamRowHtml = (teamName, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? ` <span class="sc-tee">(${nameWithTee(p1)} / ${nameWithTee(p2)})</span>` : '';
-    const wltCells = wltCellsHtml(1, 18, startHoleNum);
-    return `<tr><td class="sc-name">${escapeHtml(teamName)}${playersHtml}</td>${cells}</tr>
-      <tr class="sc-wlt"><td class="sc-name">W / L / T</td>${wltCells}</tr>`;
-  }).join('<tr class="sc-spacer"><td colspan="22" style="border:none; padding:6px 0;"></td></tr>');
+    return `<tr><td class="sc-name">${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
+  };
+  const frontRows = [[names.A, row.TeamA_P1, row.TeamA_P2], [names.B, row.TeamB_P1, row.TeamB_P2]]
+    .map(([teamName, p1, p2]) => teamRowHtml(teamName, p1, p2, 1, 9)).join('');
+  const backRows = [[names.A, row.TeamA_P1, row.TeamA_P2], [names.B, row.TeamB_P1, row.TeamB_P2]]
+    .map(([teamName, p1, p2]) => teamRowHtml(teamName, p1, p2, 10, 18)).join('');
+
+  const frontSegment = printSegmentHtml("Front 9: Captain's Choice", instruction, 1, 9, startHoleNum, frontRows, 'Team', [names.A, names.B]);
+  const backSegment = printSegmentHtml('Back 9: Modified Alternate Shot', instruction, 10, 18, startHoleNum, backRows, 'Team', [names.A, names.B]);
 
   return `
     <div class="scorecard">
@@ -1057,17 +1089,9 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
       <div class="sc-sub">Day 1 &mdash; ${escapeHtml(formatDateNice(settings.Day1Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
       <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
       ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
-      <table class="sc-table">
-        <thead>
-          ${segmentHeaderRowHtml("Front 9: Captain's Choice", "Back 9: Modified Alternate Shot")}
-          <tr><th class="sc-name">Team</th>${holeHeaderCells}</tr>
-        </thead>
-        <tbody>
-          ${hasPar ? `<tr class="sc-meta"><td class="sc-name">Par</td>${parCells}</tr>` : ''}
-          ${teamRows}
-        </tbody>
-      </table>
-      <p class="sc-note">Front 9: Captain's Choice. Back 9: Modified Alternate Shot. One combined score per team per hole &mdash; no handicap strokes apply on Day 1. The italic "W / L / T" row under each team is optional, for writing in who won each hole by hand.</p>
+      ${frontSegment}
+      ${backSegment}
+      <p class="sc-note">Front 9: Captain's Choice. Back 9: Modified Alternate Shot. No handicap strokes apply on Day 1 (Gold/Red Handicap rows are shown for reference only). Write "W" or "T" in the box for each team on every hole, then circle the winning team (or Tie) at the end of each 9.</p>
     </div>
   `;
 }
