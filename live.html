@@ -82,7 +82,7 @@
   tr.lbx-total td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
   tr.lbx-total td.lbx-pair-h { text-align: left; }
 
-  /* ---- Tournament Total summary (no per-match rows — see dayTotals()) ---- */
+  /* ---- Two Day Total summary (no per-match rows — see dayTotals()) ---- */
   .lbx-total-summary { display: flex; flex-direction: column; gap: 6px; max-width: 480px; }
   .lbx-total-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-weight: 600; background: var(--card); }
   .lbx-total-row span:last-child { font-variant-numeric: tabular-nums; }
@@ -102,26 +102,6 @@
   .prog-chip.prog-pending { background: #eee; color: var(--muted); }
   .prog-hole { font-size: 0.62rem; opacity: 0.7; }
   .prog-label { font-weight: 700; }
-
-  /* ---- Match Scorecards: Full Scorecards (expanded) ---- */
-  .scorecard-block { border-bottom: 2px solid var(--border); padding: 16px 0; }
-  .scorecard-block:last-child { border-bottom: none; }
-
-  /* ---- Live scorecard replica (below Enter Scores) ---- */
-  .sc-teams-live { font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
-  table.sc-table-live { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 0.8rem; }
-  table.sc-table-live th, table.sc-table-live td { border: 1px solid var(--border); padding: 5px 2px; text-align: center; min-width: 24px; }
-  table.sc-table-live th.sc-name, table.sc-table-live td.sc-name { text-align: left; padding: 5px 8px; white-space: nowrap; font-weight: 600; min-width: 120px; }
-  table.sc-table-live tr.sc-meta td { font-weight: 600; background: #f0f0ea; }
-  table.sc-table-live .sc-dots { color: var(--error); font-weight: 700; letter-spacing: 1px; margin-left: 2px; }
-  table.sc-table-live .sc-tee { font-weight: 400; color: var(--muted); font-size: 0.85em; }
-  table.sc-table-live tr.sc-wlt td { border-top: none; }
-  table.sc-table-live tr.sc-wlt td.sc-name { font-style: italic; color: var(--muted); font-weight: 400; font-size: 0.85em; }
-  table.sc-table-live .sc-na { background: #ececec; }
-  table.sc-table-live .sc-start-hole { background: #fff176; }
-  table.sc-table-live tr.sc-segrow th { background: #e4e4e4; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em; }
-  table.sc-table-live .seg { border-left: 2px solid #333; }
-  table.sc-table-live tr.sc-team-head td { background: var(--green-dark); color: #fff; font-weight: 700; }
 
   /* ---- Direct hole-winner entry (replaces old gross-score inputs) ---- */
   .wpick-block { padding: 14px 4px; border-bottom: 1px solid var(--border); }
@@ -190,10 +170,6 @@
       <div id="sbLeaderboard"></div>
 
       <div id="sbScorecards" hidden>
-        <div class="row" id="sbScModeToggle">
-          <button type="button" class="view-toggle-btn active" data-scmode="collapsed" onclick="setSbScMode('collapsed')">Progression</button>
-          <button type="button" class="view-toggle-btn" data-scmode="expanded" onclick="setSbScMode('expanded')">Full Scorecards</button>
-        </div>
         <div id="sbScorecardsBody"></div>
       </div>
     </div>
@@ -212,7 +188,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07e';
+const LIVE_VERSION = '2026-09-07f';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -272,11 +248,6 @@ function parForHole(hole) {
   const row = holeHC.default ? holeHC.default[hole] : undefined;
   return row ? row.Par : '';
 }
-function playerTee(name) {
-  const p = rosterByName[name];
-  return p ? p.Tee : '';
-}
-
 // Course Handicap = Handicap Index x (Slope/113) + (Course Rating - Par),
 // per this course's own rating/slope for each tee (Par 72 both tees):
 //   Red:  Slope 111, Rating 64.1
@@ -304,8 +275,8 @@ function strokesOnHole(handicapIndex, strokeIndex) {
 // Winner fields are stored directly as 'A' | 'B' | 'Half' | '' (not yet
 // entered) — this normalizes that into a 'A'|'B'|'Half'|'pending' shape so
 // every downstream tally/display helper (buildSegmentResult,
-// wltResultCellsHtml, progressionStripHtml, …) has a single consistent
-// vocabulary to work with, blank/undefined included.
+// progressionStripHtml, …) has a single consistent vocabulary to work with,
+// blank/undefined included.
 function normalizeWinner(w) {
   return (w === 'A' || w === 'B' || w === 'Half') ? w : 'pending';
 }
@@ -864,24 +835,9 @@ function playerHandicap(name) {
   const p = rosterByName[name];
   return p ? courseHandicap(p.HandicapIndex, p.Tee) : '';
 }
-// Which individual Match Play slot (1 or 2) a player is in — Team A's is
-// always fixed (P1→MP1, P2→MP2), but "swap opponents" in admin can move
-// either Team B player into either slot, so look it up from the actual
-// MP fields rather than assuming.
-function mpNumForPlayer(pairingRow, name) {
-  if (!name) return null;
-  if (name === pairingRow.MP1_TeamA || name === pairingRow.MP1_TeamB) return 1;
-  if (name === pairingRow.MP2_TeamA || name === pairingRow.MP2_TeamB) return 2;
-  return null;
-}
-
-// ====================== LIVE SCORECARD REPLICA ======================
-// A read-only, on-screen version of the printed scorecard (see index.html's
-// scorecardCardHtml/scorecardCardHtmlDay1) for whichever match is currently
-// selected in "Enter Scores" — but filled in with the actual scores on the
-// grid instead of blank boxes, and with the W/L/T rows computed live from
-// those scores instead of left blank for hand-writing. Shown below the entry
-// UI regardless of PIN-lock state, same as the Scoreboard tab.
+// ====================== SCOREBOARD HOLE-RESULT HELPERS ======================
+// Shared by the Scoreboard tab's Leaderboard segment computation and its
+// Match Scorecards "Progression" strips.
 
 // Pulls the leading hole number out of a Start Hole value like "18a" or
 // "18b" (or a plain "5") so that hole's column can be highlighted.
@@ -891,36 +847,10 @@ function startHoleNumberOf(startHole) {
   const n = parseInt(m[1], 10);
   return (n >= 1 && n <= 18) ? n : null;
 }
-function segmentHeaderRowHtml(frontLabel, backLabel) {
-  return `<tr class="sc-segrow"><th class="sc-name"></th><th colspan="9">${escapeHtml(frontLabel)}</th><th colspan="9">${escapeHtml(backLabel)}</th></tr>`;
-}
-// Turns a normalized winner ('A' | 'B' | 'Half' | 'pending') into the
-// W/L/T letter from one particular side's point of view.
-function resultLetterFor(result, perspective) {
-  if (result === 'pending' || !result) return '';
-  if (result === 'Half') return 'T';
-  return result === perspective ? 'W' : 'L';
-}
-// results: array of per-hole outcomes ('A'|'B'|'Half'|'pending') covering
-// [activeStart, activeEnd] only (index 0 = activeStart). Holes outside that
-// range are shaded, same convention as the printed scorecard's blank W/T
-// boxes not applying to that row (e.g. a Match Play row on the front 9).
-function wltResultCellsHtml(results, activeStart, activeEnd, startHoleNum, perspective) {
-  let cells = '';
-  for (let h = 1; h <= 18; h++) {
-    const segClass = h === 10 ? 'seg' : '';
-    const isActive = h >= activeStart && h <= activeEnd;
-    const startClass = (isActive && h === startHoleNum) ? ' sc-start-hole' : '';
-    const letter = isActive ? resultLetterFor(results[h - activeStart], perspective) : '';
-    cells += `<td class="${segClass}${startClass}${isActive ? '' : ' sc-na'}">${letter}</td>`;
-  }
-  return cells;
-}
-
-// ---- per-hole result arrays, shared by the live scorecard, the Scoreboard's
-// expanded scorecards, and its collapsed progression strips. pairingRow is
-// kept in each signature for call-site compatibility even though the
-// direct-entry model no longer needs it to compute a result. ----
+// ---- per-hole result arrays, shared by the Scoreboard's collapsed
+// progression strips. pairingRow is kept in each signature for call-site
+// compatibility even though the direct-entry model no longer needs it to
+// compute a result. ----
 function day1PerHoleResults(holeRows, startHole, endHole) {
   const results = [];
   for (let h = startHole; h <= endHole; h++) {
@@ -944,114 +874,12 @@ function day2MatchPlayPerHoleResults(pairingRow, holeRows, mpNum) {
   return results;
 }
 
-// Builds one scorecard's <table> + note — just the innards, no heading — so
-// it can be reused both for the Live Scoring tab's single live scorecard and
-// for the Scoreboard tab's "Full Scorecards" view (every match at once).
-// Mirrors the printed card's layout (PAR / Gold Handicap / Red Handicap rows
-// always shown, same as the sample) but filled in with the actual entered
-// W/T results instead of left blank for hand-writing — no gross scores
-// anywhere, since the app only ever records who won each hole.
-function scorecardHtmlForMatch(day, pairingRow, holeRows) {
-  const names = teamNames();
-  const hasPar = Object.keys(holeHC.default || {}).some((h) => holeHC.default[h] && holeHC.default[h].Par !== '' && holeHC.default[h].Par != null);
-  const startHoleNum = startHoleNumberOf(pairingRow.StartHole);
-  const segAndStart = (h) => `${h === 10 ? 'seg ' : ''}${h === startHoleNum ? 'sc-start-hole' : ''}`.trim();
-  const cellsFor = (fn) => { let s = ''; for (let h = 1; h <= 18; h++) s += fn(h); return s; };
-
-  const holeHeaderCells = cellsFor((h) => `<th class="${segAndStart(h)}">${h}</th>`);
-  const parCells = cellsFor((h) => `<td class="${segAndStart(h)}">${parForHole(h) || ''}</td>`);
-  const hcpCells = cellsFor((h) => `<td class="${segAndStart(h)}">${holeHC.default[h] ? (holeHC.default[h].StrokeIndex || '') : ''}</td>`);
-  const hcpRedCells = cellsFor((h) => `<td class="${segAndStart(h)}">${holeHC.red[h] ? (holeHC.red[h].StrokeIndex || '') : ''}</td>`);
-  const hcpRowsHtml = `<tr class="sc-meta"><td class="sc-name">Gold Handicap</td>${hcpCells}</tr><tr class="sc-meta"><td class="sc-name">Red Handicap</td>${hcpRedCells}</tr>`;
-
-  let headLabel, bodyHtml, noteHtml, rowHeadLabel;
-  if (day === '2') {
-    rowHeadLabel = 'Player / Team';
-    const bbResults = day2BestBallPerHoleResults(pairingRow, holeRows);
-    const resultsByMp = { 1: day2MatchPlayPerHoleResults(pairingRow, holeRows, 1), 2: day2MatchPlayPerHoleResults(pairingRow, holeRows, 2) };
-
-    // A dot per hole where that player gets a handicap stroke (•• = two) —
-    // same convention as the printed card's note — no gross value shown.
-    const playerDotsRowHtml = (name) => {
-      if (!name) return '';
-      const tee = playerTee(name);
-      const hc = playerHandicap(name);
-      let strokesTotal = 0;
-      const cells = cellsFor((h) => {
-        const strokes = strokesOnHole(hc, strokeIndexForTee(tee, h));
-        strokesTotal += strokes;
-        const dots = strokes > 0 ? `<span class="sc-dots">${'&bull;'.repeat(strokes)}</span>` : '';
-        return `<td class="${segAndStart(h)}">${dots}</td>`;
-      });
-      const strokesLabel = strokesTotal > 0 ? `${strokesTotal} stroke${strokesTotal === 1 ? '' : 's'}` : '';
-      const parenBits = [tee, strokesLabel].filter(Boolean).join(', ');
-      const teeHtml = parenBits ? ` <span class="sc-tee">(${escapeHtml(parenBits)})</span>` : '';
-      return `<tr><td class="sc-name">${escapeHtml(name)}${teeHtml}</td>${cells}</tr>`;
-    };
-
-    // Each team's block: a team-name header, its two players' stroke-dot
-    // rows, then its own three W/T rows (Best Ball, then one Match Play row
-    // per player) — a team's Match Play row uses whichever MP number that
-    // specific player is actually in, since "swap opponents" in admin can
-    // put either player in MP1 or MP2.
-    const teamBlockHtml = (teamName, p1, p2, perspective) => {
-      const mp1 = mpNumForPlayer(pairingRow, p1) || 1;
-      const mp2 = mpNumForPlayer(pairingRow, p2) || 2;
-      const wltRows = [
-        ['Best Ball', wltResultCellsHtml(bbResults, 1, 9, startHoleNum, perspective)],
-        [`Match Play &mdash; ${escapeHtml(lastName(p1))}`, wltResultCellsHtml(resultsByMp[mp1], 10, 18, startHoleNum, perspective)],
-        [`Match Play &mdash; ${escapeHtml(lastName(p2))}`, wltResultCellsHtml(resultsByMp[mp2], 10, 18, startHoleNum, perspective)],
-      ].map(([label, cells]) => `<tr class="sc-wlt"><td class="sc-name">W/T &mdash; ${label}</td>${cells}</tr>`).join('');
-      return `<tr class="sc-team-head"><td class="sc-name" colspan="19">${escapeHtml(teamName)}</td></tr>${playerDotsRowHtml(p1)}${playerDotsRowHtml(p2)}${wltRows}`;
-    };
-    const spacerRow = '<tr class="sc-spacer"><td colspan="19" style="border:none; padding:6px 0;"></td></tr>';
-    bodyHtml = teamBlockHtml(names.A, pairingRow.TeamA_P1, pairingRow.TeamA_P2, 'A')
-      + spacerRow
-      + teamBlockHtml(names.B, pairingRow.TeamB_P1, pairingRow.TeamB_P2, 'B');
-
-    headLabel = segmentHeaderRowHtml("Front 9: Best Ball", "Back 9: Individual Match Play");
-    noteHtml = '&bull; marks a hole where that player gets a handicap stroke (&bull;&bull; = two strokes). Best Ball covers the front 9 only; each Match Play row covers the back 9 only (shaded cells don\'t apply to that row). W/T rows update live as results come in.';
-  } else {
-    rowHeadLabel = 'Team';
-    const results = day1PerHoleResults(holeRows, 1, 18);
-    const teams = [
-      [names.A, pairingRow.TeamA_P1, pairingRow.TeamA_P2, 'A'],
-      [names.B, pairingRow.TeamB_P1, pairingRow.TeamB_P2, 'B'],
-    ];
-    bodyHtml = teams.map(([teamName, p1, p2, perspective]) => {
-      const playersHtml = (p1 || p2) ? ` <span class="sc-tee">(${escapeHtml([p1, p2].filter(Boolean).join(' / '))})</span>` : '';
-      const wltCells = wltResultCellsHtml(results, 1, 18, startHoleNum, perspective);
-      return `<tr class="sc-wlt"><td class="sc-name">${escapeHtml(teamName)}${playersHtml}</td>${wltCells}</tr>`;
-    }).join('');
-    headLabel = segmentHeaderRowHtml("Front 9: Captain's Choice", "Back 9: Modified Alternate Shot");
-    noteHtml = 'One combined result per team per hole &mdash; no handicap strokes apply on Day 1. W/T updates live as results come in.';
-  }
-
-  return `
-    <div style="overflow-x:auto;">
-      <table class="sc-table-live">
-        <thead>
-          ${headLabel}
-          <tr><th class="sc-name">${rowHeadLabel}</th>${holeHeaderCells}</tr>
-        </thead>
-        <tbody>
-          ${hasPar ? `<tr class="sc-meta"><td class="sc-name">Par</td>${parCells}</tr>` : ''}
-          ${hcpRowsHtml}
-          ${bodyHtml}
-        </tbody>
-      </table>
-    </div>
-    <p class="hint" style="margin-top:8px;">${noteHtml}</p>
-  `;
-}
-
 // ====================== SCOREBOARD ======================
 // Two top-level views ("Leaderboard" and "Match Scorecards"), each reading
 // the same sbDay selector — but the day selector's own options differ
-// (Leaderboard adds a "Tournament Total" choice that doesn't make sense for
+// (Leaderboard adds a "Two Day Total" choice that doesn't make sense for
 // an 18-hole scorecard), so switching views also rebuilds that dropdown.
 let sbView = 'leaderboard';
-let sbScMode = 'collapsed';
 
 document.getElementById('sbDay').addEventListener('change', loadScoreboard);
 
@@ -1063,16 +891,11 @@ function setSbView(view) {
   updateSbDayOptions();
   loadScoreboard();
 }
-function setSbScMode(mode) {
-  sbScMode = mode;
-  document.querySelectorAll('#sbScModeToggle .view-toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.scmode === mode));
-  loadScoreboard();
-}
 function updateSbDayOptions() {
   const sel = document.getElementById('sbDay');
   const current = sel.value;
   const opts = sbView === 'leaderboard'
-    ? [['1', 'Day 1'], ['2', 'Day 2'], ['total', 'Tournament Total']]
+    ? [['1', 'Day 1'], ['2', 'Day 2'], ['total', 'Two Day Total']]
     : [['1', 'Day 1'], ['2', 'Day 2']];
   sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
   sel.value = opts.some(([v]) => v === current) ? current : '1';
@@ -1119,7 +942,7 @@ function lbxPtsStackHtml(segs, side, total) {
   return `${segLines}<div class="lbx-pts-total">${formatPts(total)}</div>`;
 }
 // Per-match segment breakdown, shared by the per-day leaderboard and the
-// Tournament Total's day-by-day totals — returns each segment's result plus
+// Two Day Total's day-by-day totals — returns each segment's result plus
 // that match's points, without touching the DOM. segNames pairs with segs/
 // segLabels — the [A-side name, B-side name] to use when naming who's up.
 function matchSegmentInfo(day, row, scoresByMatch) {
@@ -1214,12 +1037,12 @@ async function loadTournamentTotal() {
     <div class="lbx-total-summary">
       <div class="lbx-total-row"><span>Day 1</span><span>${formatPts(t1.A)} &ndash; ${formatPts(t1.B)}</span></div>
       <div class="lbx-total-row"><span>Day 2</span><span>${formatPts(t2.A)} &ndash; ${formatPts(t2.B)}</span></div>
-      <div class="lbx-total-row lbx-grand"><span>${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &mdash; Tournament Total</span><span>${formatPts(grandA)} &ndash; ${formatPts(grandB)}</span></div>
+      <div class="lbx-total-row lbx-grand"><span>${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &mdash; Two Day Total</span><span>${formatPts(grandA)} &ndash; ${formatPts(grandB)}</span></div>
     </div>
   `;
 }
 
-// ---- Match Scorecards: "Progression" (collapsed) and "Full Scorecards" ----
+// ---- Match Scorecards: "Progression" strips, one per format segment ----
 
 // A per-hole strip showing the running match-play margin as holes come in —
 // cumulative net of wins (+1 for A, -1 for B) over whatever's decided so far,
@@ -1273,22 +1096,11 @@ async function loadScorecardsView(day) {
   let html;
   if (!rows.length) {
     html = '<p class="hint">No matches set up yet.</p>';
-  } else if (sbScMode === 'collapsed') {
+  } else {
     html = rows.map((row) => hasPlayersLb(row)
       ? scorecardsCollapsedHtml(day, row, scoresByMatch)
       : `<div class="sc-collapsed-match"><div class="lbx-unset">Match ${escapeHtml(row.MatchNum)} — not set up yet</div></div>`
     ).join('');
-  } else {
-    const names = teamNames();
-    html = rows.map((row) => {
-      if (!hasPlayersLb(row)) return `<div class="scorecard-block"><div class="lbx-unset">Match ${escapeHtml(row.MatchNum)} — not set up yet</div></div>`;
-      const holeRows = buildHoleGrid(day, row.MatchNum, scoresByMatch[row.MatchNum] || []);
-      return `<div class="scorecard-block">
-        <h3 style="margin-bottom:2px;">${escapeHtml(matchLabel(day, row))}</h3>
-        <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
-        ${scorecardHtmlForMatch(day, row, holeRows)}
-      </div>`;
-    }).join('');
   }
   document.getElementById('sbScorecardsBody').innerHTML = html;
 }
