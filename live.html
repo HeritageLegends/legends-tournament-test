@@ -169,8 +169,6 @@
         <span class="hint">Scores also autosave a couple seconds after you stop typing.</span>
       </div>
     </div>
-
-    <div class="card" id="scLiveCardWrap"></div>
   </section>
 
   <!-- SCOREBOARD -->
@@ -210,7 +208,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07c';
+const LIVE_VERSION = '2026-09-07d';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -481,9 +479,6 @@ function buildHoleGrid(day, matchNum, existingRows) {
 // renders whichever of the two score-entry views is currently selected.
 function renderScoringUI(day, matchNum) {
   const toggleEl = document.getElementById('scViewToggle');
-  // The live scorecard replica is read-only, so it's shown regardless of
-  // PIN-lock state — same policy as the Scoreboard tab.
-  renderLiveScorecard(day, matchNum);
   if (!matchNum) {
     toggleEl.innerHTML = '';
     renderFullGrid(day, matchNum);
@@ -500,7 +495,7 @@ function renderScoringUI(day, matchNum) {
     document.getElementById('scStatusLines').innerHTML = '';
     document.getElementById('scGridWrap').innerHTML = `
       <div class="card" style="margin:0; background:#fdecea; border-color:var(--error);">
-        <p class="hint" style="margin-top:0; color:var(--error); font-weight:600;">Day ${escapeHtml(day)} results are locked by the admin — scores can no longer be changed. The scorecard below still reflects the final results.</p>
+        <p class="hint" style="margin-top:0; color:var(--error); font-weight:600;">Day ${escapeHtml(day)} results are locked by the admin — scores can no longer be changed. Check the Scoreboard tab for final results.</p>
       </div>
     `;
     return;
@@ -573,16 +568,22 @@ function playerStrokeNoteHtml(name, hole) {
   if (strokes <= 0) return '';
   return `<div class="hbh-stroke-note">${escapeHtml(lastName(name))}: gets ${strokes} stroke${strokes > 1 ? 's' : ''}<span class="hbh-dot"></span></div>`;
 }
+// Button text: the Tie button just says "Tie"; each side's own button says
+// "<name> Wins" so the row is self-explanatory without a separate label line
+// above it.
 function winnerButtonsHtml(field, val, aLabel, bLabel) {
-  const btn = (v, label, cls) => `<button type="button" class="wpick-btn ${val === v ? 'active ' + cls : ''}" data-wfield="${field}" data-wval="${v}">${escapeHtml(label)}</button>`;
+  const btn = (v, rawLabel, cls) => {
+    const label = v === 'Half' ? rawLabel : `${rawLabel} Wins`;
+    return `<button type="button" class="wpick-btn ${val === v ? 'active ' + cls : ''}" data-wfield="${field}" data-wval="${v}">${escapeHtml(label)}</button>`;
+  };
   return `<div class="wpick-row">${btn('A', aLabel, 'wpick-a')}${btn('Half', 'Tie', 'wpick-half')}${btn('B', bLabel, 'wpick-b')}</div>`;
 }
-// Team-vs-team pick (Day 1 both segments, Day 2 Best Ball) — shows every
-// player on each side so their stroke hints are visible together.
-function teamWinnerBlockHtml(field, holeRow, hole, aLabel, bLabel, aPlayers, bPlayers) {
+// Team-vs-team pick (Day 1 both segments, Day 2 Best Ball) — just the three
+// buttons, since each button's own "<Team> Wins" text already says who it's
+// for.
+function teamWinnerBlockHtml(field, holeRow, hole, aLabel, bLabel) {
   const val = holeRow[field] || '';
-  const sideNote = (players) => (players || []).filter(Boolean).map((name) => playerStrokeNoteHtml(name, hole)).join('');
-  return `<div class="wpick-block"><div class="wpick-sides"><div class="wpick-side">${escapeHtml(aLabel)}${sideNote(aPlayers)}</div><div class="wpick-side">${escapeHtml(bLabel)}${sideNote(bPlayers)}</div></div>${winnerButtonsHtml(field, val, aLabel, bLabel)}</div>`;
+  return `<div class="wpick-block">${winnerButtonsHtml(field, val, aLabel, bLabel)}</div>`;
 }
 // Player-vs-player pick (Day 2 Individual Match Play, one block per MP slot).
 function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName) {
@@ -607,13 +608,13 @@ function renderHoleByHole(day, matchNum) {
   let blocksHtml;
   if (day === '2') {
     if (h <= 9) {
-      blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, names.A, names.B, [pairingRow.TeamA_P1, pairingRow.TeamA_P2], [pairingRow.TeamB_P1, pairingRow.TeamB_P2]);
+      blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, names.A, names.B);
     } else {
       blocksHtml = matchupWinnerBlockHtml('MP1Winner', holeRow, h, pairingRow.MP1_TeamA, pairingRow.MP1_TeamB)
         + matchupWinnerBlockHtml('MP2Winner', holeRow, h, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB);
     }
   } else {
-    blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B, [pairingRow.TeamA_P1, pairingRow.TeamA_P2], [pairingRow.TeamB_P1, pairingRow.TeamB_P2]);
+    blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B);
   }
 
   const par = parForHole(h);
@@ -792,7 +793,6 @@ function renderStatusLines(day, matchNum, pairingRow) {
       statusLineHtml('Modified Alternate Shot (back 9)', asg, names.A, names.B),
     ].join('');
   }
-  renderLiveScorecard(day, matchNum);
 }
 
 function statusLineHtml(label, seg, aName, bName) {
@@ -1038,19 +1038,6 @@ function scorecardHtmlForMatch(day, pairingRow, holeRows) {
       </table>
     </div>
     <p class="hint" style="margin-top:8px;">${noteHtml}</p>
-  `;
-}
-
-function renderLiveScorecard(day, matchNum) {
-  const wrap = document.getElementById('scLiveCardWrap');
-  if (!matchNum) { wrap.innerHTML = ''; return; }
-  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
-  if (!pairingRow || !(pairingRow.TeamA_P1 || pairingRow.TeamA_P2 || pairingRow.TeamB_P1 || pairingRow.TeamB_P2)) { wrap.innerHTML = ''; return; }
-  const names = teamNames();
-  wrap.innerHTML = `
-    <h2 style="margin-top:0;">Match Scorecard</h2>
-    <div class="sc-teams-live">${escapeHtml(names.A)} vs ${escapeHtml(names.B)} &middot; Start Hole: ${escapeHtml(pairingRow.StartHole || 'TBD')}</div>
-    ${scorecardHtmlForMatch(day, pairingRow, currentHoles)}
   `;
 }
 
