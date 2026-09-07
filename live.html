@@ -44,8 +44,7 @@
   .hbh-nav select { flex: 1; }
   .hbh-nav button { padding: 10px 16px; font-size: 1.1rem; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; cursor: pointer; flex-shrink: 0; }
   .hbh-nav button:disabled { opacity: 0.35; }
-  .hbh-heading { text-align: center; font-weight: 700; color: var(--green-dark); margin: 10px 0 6px; }
-  .hbh-heading .seg { font-weight: 400; color: var(--muted); font-size: 0.85rem; display: block; margin-top: 2px; }
+  .hbh-seglabel { text-align: center; font-weight: 600; color: var(--muted); font-size: 0.82rem; margin: 2px 0 8px; }
   .hbh-stroke-note { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
   .hbh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-left: 4px; }
 
@@ -187,7 +186,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07i';
+const LIVE_VERSION = '2026-09-07j';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -535,8 +534,11 @@ function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName) {
 }
 
 // One hole at a time — just this match's players/teams, big touch-friendly
-// tap targets, no horizontal scrolling. Prev/Next (or the dropdown) move
-// between holes; the status lines above update live the same as the full grid.
+// tap targets, no horizontal scrolling. The nav row (‹ Hole N ›) sits right
+// above the pick buttons on its own compact line, so a team-vs-team hole
+// (Day 1, or Day 2 Best Ball) is effectively one line of controls: nav, then
+// the three "<Team> Wins" / "Tie" / "<Team> Wins" buttons. Prev/Next (or the
+// dropdown) move between holes; the status lines above update live.
 function renderHoleByHole(day, matchNum) {
   const wrap = document.getElementById('scGridWrap');
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
@@ -559,18 +561,20 @@ function renderHoleByHole(day, matchNum) {
     blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B);
   }
 
-  const par = parForHole(h);
   wrap.innerHTML = `
     <div class="hbh-nav">
       <button type="button" onclick="stepHole(-1)">‹</button>
       <select id="hbhHoleSelect" onchange="jumpToHole(this.value)">
-        ${Array.from({ length: 18 }, (_, i) => `<option value="${i}" ${i === scHoleIndex ? 'selected' : ''}>Hole ${i + 1}</option>`).join('')}
+        ${Array.from({ length: 18 }, (_, i) => {
+          const p = parForHole(i + 1);
+          return `<option value="${i}" ${i === scHoleIndex ? 'selected' : ''}>Hole ${i + 1}${p ? ` (Par ${escapeHtml(String(p))})` : ''}</option>`;
+        }).join('')}
       </select>
       <button type="button" onclick="stepHole(1)">›</button>
     </div>
-    <div class="hbh-heading">Hole ${h}${par ? ` <span style="font-weight:400;">(Par ${escapeHtml(String(par))})</span>` : ''}<span class="seg">${escapeHtml(segLabel)}</span></div>
-    <div>${blocksHtml}</div>
-    <p class="hint" style="margin-top:10px;">On a shotgun start, holes don't need to be entered in order — jump straight to whichever hole your group just finished. Prev/Next wraps from 18 back to 1 (and 1 back to 18) — watch the heading above, since the format changes at the turn.</p>
+    <div class="hbh-seglabel">${escapeHtml(segLabel)}</div>
+    ${blocksHtml}
+    <p class="hint" style="margin-top:10px;">Pick a result and it saves and moves on to the next hole right away — no need to hit Save Now or the arrows yourself. On a shotgun start, jump straight to whichever hole your group just finished; Prev/Next (and the dropdown) wrap from 18 back to 1 and vice versa.</p>
   `;
 
   wrap.querySelectorAll('.wpick-btn').forEach((btn) => {
@@ -579,7 +583,18 @@ function renderHoleByHole(day, matchNum) {
       const val = btn.dataset.wval;
       const current = currentHoles[scHoleIndex][field];
       // Tapping the already-selected choice clears it back to "not entered".
-      currentHoles[scHoleIndex][field] = current === val ? '' : val;
+      const cleared = current === val;
+      currentHoles[scHoleIndex][field] = cleared ? '' : val;
+      // Once this tap leaves the whole hole filled in (both Match Play
+      // matchups too, not just this one) save immediately and jump ahead to
+      // the next hole — a scorekeeper can enter a whole round without ever
+      // touching Save Now or the arrows. Clearing a mistake, or finishing
+      // only one of Day 2's two Match Play matchups, stays put instead.
+      if (!cleared && !holeIsBlank(day, currentHoles[scHoleIndex])) {
+        saveCurrentMatch(day, matchNum, currentHoles);
+        stepHole(1);
+        return;
+      }
       renderHoleByHole(day, matchNum);
       renderStatusLines(day, matchNum, pairingRow);
       scheduleAutosave(day, matchNum);
