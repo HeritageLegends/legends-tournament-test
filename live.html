@@ -129,7 +129,10 @@
   .wpick-btn.active.wpick-a { background: var(--win); border-color: var(--green); color: var(--green-dark); }
   .wpick-btn.active.wpick-b { background: var(--lose); border-color: var(--error); color: var(--error); }
   .wpick-btn.active.wpick-half { background: var(--half); border-color: var(--gold); color: #7a5b00; }
-  .fg-cycle-btn { width: 36px; height: 32px; font-weight: 700; border-radius: 4px; border: 1px solid var(--border); background: #fff; cursor: pointer; }
+  .fg-cycle-btn { width: 52px; height: 32px; font-weight: 700; font-size: 0.72rem; border-radius: 4px; border: 1px solid var(--border); background: #fff; cursor: pointer; }
+  .fg-cycle-btn.fg-win { background: var(--win); border-color: var(--green); color: var(--green-dark); }
+  .fg-cycle-btn.fg-loss { background: var(--lose); border-color: var(--error); color: var(--error); }
+  .fg-cycle-btn.fg-tie { background: var(--half); border-color: var(--gold); color: #7a5b00; }
   td.fg-na { background: #f5f5f0; }
 </style>
 </head>
@@ -207,7 +210,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07a';
+const LIVE_VERSION = '2026-09-07c';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -304,13 +307,27 @@ function strokesOnHole(handicapIndex, strokeIndex) {
 function normalizeWinner(w) {
   return (w === 'A' || w === 'B' || w === 'Half') ? w : 'pending';
 }
-// Cycles a full-grid cell's stored value: blank -> A -> Tie -> B -> blank.
-function nextWinnerValue(current) {
-  const order = ['', 'A', 'Half', 'B'];
+// A single stored Winner-type field ('A'|'B'|'Half'|'') viewed from one
+// particular side's own perspective, as a self-explanatory word instead of
+// a letter — 'Win' if this side won, 'Tie' if halved, 'Loss' if the other
+// side won, blank if not entered yet.
+function resultWordFor(value, perspective) {
+  if (!value) return '';
+  if (value === 'Half') return 'Tie';
+  return value === perspective ? 'Win' : 'Loss';
+}
+// Cycles a full-grid cell from one side's own perspective: blank -> Win ->
+// Tie -> Loss -> blank. Setting "Win" for one side is the exact same
+// underlying value as "Loss" for the other side — they're just two mirrored
+// views of one shared per-hole result — so ticking Win on one side's row
+// automatically flips the other side's row to Loss, with nothing extra to
+// keep in sync.
+function nextResultValue(current, perspective) {
+  const other = perspective === 'A' ? 'B' : 'A';
+  const order = ['', perspective, 'Half', other];
   const idx = order.indexOf(current || '');
   return order[(idx + 1) % order.length];
 }
-function winnerLetter(v) { return v === 'A' ? 'A' : v === 'B' ? 'B' : v === 'Half' ? 'T' : '–'; }
 
 async function loadShared() {
   const [sRes, rRes, hRes, hRedRes, p1Res, p2Res] = await Promise.all([
@@ -602,15 +619,15 @@ function renderHoleByHole(day, matchNum) {
   const par = parForHole(h);
   wrap.innerHTML = `
     <div class="hbh-nav">
-      <button type="button" onclick="stepHole(-1)" ${scHoleIndex === 0 ? 'disabled' : ''}>‹</button>
+      <button type="button" onclick="stepHole(-1)">‹</button>
       <select id="hbhHoleSelect" onchange="jumpToHole(this.value)">
         ${Array.from({ length: 18 }, (_, i) => `<option value="${i}" ${i === scHoleIndex ? 'selected' : ''}>Hole ${i + 1}</option>`).join('')}
       </select>
-      <button type="button" onclick="stepHole(1)" ${scHoleIndex === 17 ? 'disabled' : ''}>›</button>
+      <button type="button" onclick="stepHole(1)">›</button>
     </div>
     <div class="hbh-heading">Hole ${h}${par ? ` <span style="font-weight:400;">(Par ${escapeHtml(String(par))})</span>` : ''}<span class="seg">${escapeHtml(segLabel)}</span></div>
     <div>${blocksHtml}</div>
-    <p class="hint" style="margin-top:10px;">On a shotgun start, holes don't need to be entered in order — jump straight to whichever hole your group just finished.</p>
+    <p class="hint" style="margin-top:10px;">On a shotgun start, holes don't need to be entered in order — jump straight to whichever hole your group just finished. Prev/Next wraps from 18 back to 1 (and 1 back to 18) — watch the heading above, since the format changes at the turn.</p>
   `;
 
   wrap.querySelectorAll('.wpick-btn').forEach((btn) => {
@@ -629,8 +646,12 @@ function renderHoleByHole(day, matchNum) {
   renderStatusLines(day, matchNum, pairingRow);
 }
 
+// Wraps 18 -> 1 and 1 -> 18 rather than stopping at the ends — a shotgun
+// group finishing on hole 18 naturally continues into hole 1 next, and the
+// format flips there (front 9 <-> back 9), which the heading above already
+// makes clear.
 function stepHole(dir) {
-  scHoleIndex = Math.max(0, Math.min(17, scHoleIndex + dir));
+  scHoleIndex = (scHoleIndex + dir + 18) % 18;
   const day = document.getElementById('scDay').value;
   const matchNum = document.getElementById('scMatch').value;
   renderHoleByHole(day, matchNum);
@@ -643,9 +664,13 @@ function jumpToHole(idx) {
 }
 
 // The original full 18-hole-wide scorecard grid — kept as an alternate view
-// (handy on a tablet, or to eyeball the whole round at once). Each cell is
-// now a tap-to-cycle button (blank → this side's win → Tie → other side's
-// win → blank) instead of a numeric score input.
+// (handy on a tablet, or to eyeball the whole round at once). Each side gets
+// its own row (rather than one combined "A vs B" row) showing a
+// self-explanatory Win/Tie/Loss word per hole instead of an A/B/T letter —
+// tapping a cell cycles blank → this side's Win → Tie → Loss → blank, and
+// since both rows are just two mirrored views of the same single stored
+// result, marking one side's cell Win instantly shows Loss on the other
+// side's row for that hole (and vice versa) — nothing extra to keep in sync.
 function renderFullGrid(day, matchNum) {
   const wrap = document.getElementById('scGridWrap');
   if (!matchNum) { wrap.innerHTML = '<p class="hint">Set up this match\'s pairing first (Admin → Pairings) before entering scores.</p>'; document.getElementById('scStatusLines').innerHTML = ''; return; }
@@ -655,39 +680,43 @@ function renderFullGrid(day, matchNum) {
   let headerCells = '<th class="rowlabel"></th>';
   for (let h = 1; h <= 18; h++) headerCells += `<th class="${h === 10 ? 'segdivider' : ''}">${h}</th>`;
 
-  const cycleCellHtml = (field, h, na) => {
+  const fgResultClass = (word) => word === 'Win' ? 'fg-win' : word === 'Loss' ? 'fg-loss' : word === 'Tie' ? 'fg-tie' : '';
+  const cycleCellHtml = (field, perspective, h, na) => {
     const segClass = h === 10 ? 'segdivider' : '';
     if (na) return `<td class="${segClass} fg-na"></td>`;
     const val = currentHoles[h - 1][field] || '';
-    return `<td class="${segClass}"><button type="button" class="fg-cycle-btn" data-hole="${h}" data-field="${field}">${winnerLetter(val)}</button></td>`;
+    const word = resultWordFor(val, perspective) || '–';
+    return `<td class="${segClass}"><button type="button" class="fg-cycle-btn ${fgResultClass(word)}" data-hole="${h}" data-field="${field}" data-perspective="${perspective}">${word}</button></td>`;
+  };
+  const rowHtml = (field, perspective, label, isNa) => {
+    let cells = `<td class="rowlabel">${escapeHtml(label)}</td>`;
+    for (let h = 1; h <= 18; h++) cells += cycleCellHtml(field, perspective, h, isNa ? isNa(h) : false);
+    return `<tr>${cells}</tr>`;
   };
 
   let bodyRows = '';
   if (day === '2') {
-    const rowsDef = [
-      ['BestBallWinner', `${names.A} vs ${names.B} — Best Ball`, (h) => h > 9],
-      ['MP1Winner', `${lastNameOrUnassigned(pairingRow.MP1_TeamA)} vs ${lastNameOrUnassigned(pairingRow.MP1_TeamB)} — Match Play`, (h) => h < 10],
-      ['MP2Winner', `${lastNameOrUnassigned(pairingRow.MP2_TeamA)} vs ${lastNameOrUnassigned(pairingRow.MP2_TeamB)} — Match Play`, (h) => h < 10],
-    ];
-    bodyRows = rowsDef.map(([field, label, isNa]) => {
-      let cells = `<td class="rowlabel">${escapeHtml(label)}</td>`;
-      for (let h = 1; h <= 18; h++) cells += cycleCellHtml(field, h, isNa(h));
-      return `<tr>${cells}</tr>`;
-    }).join('');
+    bodyRows = [
+      rowHtml('BestBallWinner', 'A', names.A, (h) => h > 9),
+      rowHtml('BestBallWinner', 'B', names.B, (h) => h > 9),
+      rowHtml('MP1Winner', 'A', lastNameOrUnassigned(pairingRow.MP1_TeamA), (h) => h < 10),
+      rowHtml('MP1Winner', 'B', lastNameOrUnassigned(pairingRow.MP1_TeamB), (h) => h < 10),
+      rowHtml('MP2Winner', 'A', lastNameOrUnassigned(pairingRow.MP2_TeamA), (h) => h < 10),
+      rowHtml('MP2Winner', 'B', lastNameOrUnassigned(pairingRow.MP2_TeamB), (h) => h < 10),
+    ].join('');
   } else {
-    let cells = `<td class="rowlabel">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</td>`;
-    for (let h = 1; h <= 18; h++) cells += cycleCellHtml('Winner', h, false);
-    bodyRows = `<tr>${cells}</tr>`;
+    bodyRows = rowHtml('Winner', 'A', names.A) + rowHtml('Winner', 'B', names.B);
   }
 
   wrap.innerHTML = `<div style="overflow-x:auto;"><table class="grid"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>
-    <p class="hint" style="margin-top:8px;">Tap a cell to cycle: blank → ${escapeHtml(names.A)} win → Tie → ${escapeHtml(names.B)} win → blank. Holes 1–9: ${day === '2' ? 'Best Ball' : "Captain's Choice"}. Holes 10–18: ${day === '2' ? 'Individual Match Play' : 'Modified Alternate Shot'}. Enter whichever holes your group has finished — order doesn't matter for a shotgun start.</p>`;
+    <p class="hint" style="margin-top:8px;">Tap a cell to cycle: blank → Win → Tie → Loss → blank. Marking one side Win automatically marks the other side Loss for that hole, since it's the same result either way. Holes 1–9: ${day === '2' ? 'Best Ball' : "Captain's Choice"}. Holes 10–18: ${day === '2' ? 'Individual Match Play' : 'Modified Alternate Shot'}. Enter whichever holes your group has finished — order doesn't matter for a shotgun start.</p>`;
 
   wrap.querySelectorAll('.fg-cycle-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const h = parseInt(btn.dataset.hole, 10);
       const field = btn.dataset.field;
-      currentHoles[h - 1][field] = nextWinnerValue(currentHoles[h - 1][field]);
+      const perspective = btn.dataset.perspective;
+      currentHoles[h - 1][field] = nextResultValue(currentHoles[h - 1][field], perspective);
       renderFullGrid(day, matchNum);
       renderStatusLines(day, matchNum, pairingRow);
       scheduleAutosave(day, matchNum);
