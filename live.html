@@ -24,11 +24,6 @@
   .card h2 { margin-top: 0; font-size: 1.05rem; color: var(--green-dark); }
   select, input[type=number] { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; }
   .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-  table.grid { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-  table.grid th, table.grid td { border: 1px solid var(--border); padding: 4px; text-align: center; }
-  table.grid th { background: #f0f0ea; font-weight: 600; }
-  table.grid td.rowlabel, table.grid th.rowlabel { text-align: left; padding: 6px 8px; white-space: nowrap; font-weight: 600; }
-  table.grid .segdivider { border-left: 3px solid var(--green); }
   .status-line { font-size: 0.9rem; margin: 4px 0; }
   .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
   .status-badge.a { background: var(--win); color: var(--green-dark); }
@@ -119,11 +114,6 @@
   .wpick-btn.active.wpick-a { background: var(--win); border-color: var(--green); color: var(--green-dark); }
   .wpick-btn.active.wpick-b { background: var(--lose); border-color: var(--error); color: var(--error); }
   .wpick-btn.active.wpick-half { background: var(--half); border-color: var(--gold); color: #7a5b00; }
-  .fg-cycle-btn { width: 52px; height: 32px; font-weight: 700; font-size: 0.72rem; border-radius: 4px; border: 1px solid var(--border); background: #fff; cursor: pointer; }
-  .fg-cycle-btn.fg-win { background: var(--win); border-color: var(--green); color: var(--green-dark); }
-  .fg-cycle-btn.fg-loss { background: var(--lose); border-color: var(--error); color: var(--error); }
-  .fg-cycle-btn.fg-tie { background: var(--half); border-color: var(--gold); color: #7a5b00; }
-  td.fg-na { background: #f5f5f0; }
 </style>
 </head>
 <body>
@@ -197,7 +187,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07h';
+const LIVE_VERSION = '2026-09-07i';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -289,28 +279,6 @@ function strokesOnHole(handicapIndex, strokeIndex) {
 function normalizeWinner(w) {
   return (w === 'A' || w === 'B' || w === 'Half') ? w : 'pending';
 }
-// A single stored Winner-type field ('A'|'B'|'Half'|'') viewed from one
-// particular side's own perspective, as a self-explanatory word instead of
-// a letter — 'Win' if this side won, 'Tie' if halved, 'Loss' if the other
-// side won, blank if not entered yet.
-function resultWordFor(value, perspective) {
-  if (!value) return '';
-  if (value === 'Half') return 'Tie';
-  return value === perspective ? 'Win' : 'Loss';
-}
-// Cycles a full-grid cell from one side's own perspective: blank -> Win ->
-// Tie -> Loss -> blank. Setting "Win" for one side is the exact same
-// underlying value as "Loss" for the other side — they're just two mirrored
-// views of one shared per-hole result — so ticking Win on one side's row
-// automatically flips the other side's row to Loss, with nothing extra to
-// keep in sync.
-function nextResultValue(current, perspective) {
-  const other = perspective === 'A' ? 'B' : 'A';
-  const order = ['', perspective, 'Half', other];
-  const idx = order.indexOf(current || '');
-  return order[(idx + 1) % order.length];
-}
-
 async function loadShared() {
   const [sRes, rRes, hRes, hRedRes, p1Res, p2Res] = await Promise.all([
     apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getHoleHandicapsRed'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }),
@@ -369,7 +337,6 @@ let currentHoles = []; // in-memory grid for the currently selected match
 // was scheduled for, so it always saves the right data to the right match
 // even after you've navigated away — see scheduleAutosave/saveCurrentMatch.
 let saveTimers = {};
-let scViewMode = 'hbh'; // 'hbh' (one hole at a time) | 'grid' (full 18-hole scorecard)
 let scHoleIndex = 0; // 0-based, 0..17 — which hole the hbh view is showing
 
 // ---- per-match PIN gate ----
@@ -459,13 +426,14 @@ function buildHoleGrid(day, matchNum, existingRows) {
   return holes;
 }
 
-// Top-level dispatcher: shows the view toggle (once a match is picked) and
-// renders whichever of the two score-entry views is currently selected.
+// Top-level dispatcher: goes straight to the one-hole-at-a-time entry view
+// (once a match is picked and unlocked) — no alternate view to toggle to.
 function renderScoringUI(day, matchNum) {
   const toggleEl = document.getElementById('scViewToggle');
   if (!matchNum) {
     toggleEl.innerHTML = '';
-    renderFullGrid(day, matchNum);
+    document.getElementById('scGridWrap').innerHTML = '<p class="hint">Set up this match\'s pairing first (Admin → Pairings) before entering scores.</p>';
+    document.getElementById('scStatusLines').innerHTML = '';
     return;
   }
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
@@ -484,13 +452,10 @@ function renderScoringUI(day, matchNum) {
     `;
     return;
   }
-  toggleEl.innerHTML = `
-    <button type="button" class="view-toggle-btn ${scViewMode === 'hbh' ? 'active' : ''}" onclick="setScView('hbh')">Enter Scores</button>
-    <button type="button" class="view-toggle-btn ${scViewMode === 'grid' ? 'active' : ''}" onclick="setScView('grid')">Full Scorecard</button>
-    ${pairingRow && pairingRow.PIN ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Change PIN</button>` : ''}
-  `;
-  if (scViewMode === 'hbh') renderHoleByHole(day, matchNum);
-  else renderFullGrid(day, matchNum);
+  toggleEl.innerHTML = pairingRow && pairingRow.PIN
+    ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Change PIN</button>`
+    : '';
+  renderHoleByHole(day, matchNum);
 }
 
 // Clears this device's remembered PIN for this match and re-shows the lock
@@ -532,13 +497,6 @@ function tryUnlockMatch(day, matchNum) {
     document.getElementById('pinError').textContent = 'Incorrect PIN — check with your foursome or the admin.';
   }
 }
-function setScView(mode) {
-  scViewMode = mode;
-  const day = document.getElementById('scDay').value;
-  const matchNum = document.getElementById('scMatch').value;
-  renderScoringUI(day, matchNum);
-}
-
 // ---- direct hole-winner tap UI (replaces gross-score entry) ----
 // The scorekeeper works out who actually won the hole (using the stroke
 // hints below each side's name to judge net results fairly) and taps that
@@ -646,69 +604,6 @@ function jumpToHole(idx) {
   const day = document.getElementById('scDay').value;
   const matchNum = document.getElementById('scMatch').value;
   renderHoleByHole(day, matchNum);
-}
-
-// The original full 18-hole-wide scorecard grid — kept as an alternate view
-// (handy on a tablet, or to eyeball the whole round at once). Each side gets
-// its own row (rather than one combined "A vs B" row) showing a
-// self-explanatory Win/Tie/Loss word per hole instead of an A/B/T letter —
-// tapping a cell cycles blank → this side's Win → Tie → Loss → blank, and
-// since both rows are just two mirrored views of the same single stored
-// result, marking one side's cell Win instantly shows Loss on the other
-// side's row for that hole (and vice versa) — nothing extra to keep in sync.
-function renderFullGrid(day, matchNum) {
-  const wrap = document.getElementById('scGridWrap');
-  if (!matchNum) { wrap.innerHTML = '<p class="hint">Set up this match\'s pairing first (Admin → Pairings) before entering scores.</p>'; document.getElementById('scStatusLines').innerHTML = ''; return; }
-  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
-  const names = teamNames();
-
-  let headerCells = '<th class="rowlabel"></th>';
-  for (let h = 1; h <= 18; h++) headerCells += `<th class="${h === 10 ? 'segdivider' : ''}">${h}</th>`;
-
-  const fgResultClass = (word) => word === 'Win' ? 'fg-win' : word === 'Loss' ? 'fg-loss' : word === 'Tie' ? 'fg-tie' : '';
-  const cycleCellHtml = (field, perspective, h, na) => {
-    const segClass = h === 10 ? 'segdivider' : '';
-    if (na) return `<td class="${segClass} fg-na"></td>`;
-    const val = currentHoles[h - 1][field] || '';
-    const word = resultWordFor(val, perspective) || '–';
-    return `<td class="${segClass}"><button type="button" class="fg-cycle-btn ${fgResultClass(word)}" data-hole="${h}" data-field="${field}" data-perspective="${perspective}">${word}</button></td>`;
-  };
-  const rowHtml = (field, perspective, label, isNa) => {
-    let cells = `<td class="rowlabel">${escapeHtml(label)}</td>`;
-    for (let h = 1; h <= 18; h++) cells += cycleCellHtml(field, perspective, h, isNa ? isNa(h) : false);
-    return `<tr>${cells}</tr>`;
-  };
-
-  let bodyRows = '';
-  if (day === '2') {
-    bodyRows = [
-      rowHtml('BestBallWinner', 'A', names.A, (h) => h > 9),
-      rowHtml('BestBallWinner', 'B', names.B, (h) => h > 9),
-      rowHtml('MP1Winner', 'A', lastNameOrUnassigned(pairingRow.MP1_TeamA), (h) => h < 10),
-      rowHtml('MP1Winner', 'B', lastNameOrUnassigned(pairingRow.MP1_TeamB), (h) => h < 10),
-      rowHtml('MP2Winner', 'A', lastNameOrUnassigned(pairingRow.MP2_TeamA), (h) => h < 10),
-      rowHtml('MP2Winner', 'B', lastNameOrUnassigned(pairingRow.MP2_TeamB), (h) => h < 10),
-    ].join('');
-  } else {
-    bodyRows = rowHtml('Winner', 'A', names.A) + rowHtml('Winner', 'B', names.B);
-  }
-
-  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="grid"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>
-    <p class="hint" style="margin-top:8px;">Tap a cell to cycle: blank → Win → Tie → Loss → blank. Marking one side Win automatically marks the other side Loss for that hole, since it's the same result either way. Holes 1–9: ${day === '2' ? 'Best Ball' : "Captain's Choice"}. Holes 10–18: ${day === '2' ? 'Individual Match Play' : 'Modified Alternate Shot'}. Enter whichever holes your group has finished — order doesn't matter for a shotgun start.</p>`;
-
-  wrap.querySelectorAll('.fg-cycle-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const h = parseInt(btn.dataset.hole, 10);
-      const field = btn.dataset.field;
-      const perspective = btn.dataset.perspective;
-      currentHoles[h - 1][field] = nextResultValue(currentHoles[h - 1][field], perspective);
-      renderFullGrid(day, matchNum);
-      renderStatusLines(day, matchNum, pairingRow);
-      scheduleAutosave(day, matchNum);
-    });
-  });
-
-  renderStatusLines(day, matchNum, pairingRow);
 }
 
 function scheduleAutosave(day, matchNum) {
