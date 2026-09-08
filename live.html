@@ -134,6 +134,19 @@
   .wpick-btn.active.wpick-a { background: var(--win); border-color: var(--green); color: var(--green-dark); }
   .wpick-btn.active.wpick-b { background: var(--lose); border-color: var(--error); color: var(--error); }
   .wpick-btn.active.wpick-half { background: var(--half); border-color: var(--gold); color: #7a5b00; }
+
+  /* ---- Concede-or-continue banner — shown the moment a segment becomes
+     mathematically decided with holes still left to play. ---- */
+  .concede-banner { background: #fff7e0; border: 1.5px solid var(--gold); border-radius: 10px; padding: 12px 14px; margin: 10px 0 14px; }
+  .concede-banner-title { font-weight: 700; color: #7a5b00; margin-bottom: 4px; }
+  .concede-banner-detail { font-size: 0.85rem; color: var(--muted); margin-bottom: 10px; }
+  .concede-banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .concede-btn { flex: 1 1 120px; padding: 12px 6px; font-size: 0.92rem; font-weight: 700; border-radius: 8px; border: none; cursor: pointer; }
+  .concede-yes { background: var(--green); color: #fff; }
+  .concede-no { background: #fff; color: var(--green-dark); border: 1.5px solid var(--green); }
+  /* Small badge marking a hole filled in by a concession rather than actually
+     played out — distinct from the tie badge above. */
+  .prog-conceded { position: absolute; top: -6px; right: -4px; width: 15px; height: 15px; border-radius: 50%; background: var(--muted); color: #fff; border: 1.5px solid #fff; font-size: 0.6rem; font-weight: 800; line-height: 12px; }
 </style>
 </head>
 <body>
@@ -207,7 +220,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-07o';
+const LIVE_VERSION = '2026-09-08a';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -291,13 +304,16 @@ function strokesOnHole(handicapIndex, strokeIndex) {
   const extra = (si <= (rounded % 18)) ? 1 : 0;
   return base + extra;
 }
-// Winner fields are stored directly as 'A' | 'B' | 'Half' | '' (not yet
-// entered) — this normalizes that into a 'A'|'B'|'Half'|'pending' shape so
-// every downstream tally/display helper (buildSegmentResult,
-// progressionStripHtml, …) has a single consistent vocabulary to work with,
-// blank/undefined included.
+// Winner fields are stored directly as 'A' | 'B' | 'Half' | 'Conceded' | ''
+// (not yet entered) — this normalizes that into a
+// 'A'|'B'|'Half'|'Conceded'|'pending' shape so every downstream tally/display
+// helper (buildSegmentResult, progressionStripHtml, …) has a single
+// consistent vocabulary to work with, blank/undefined included. 'Conceded' is
+// the sentinel written into remaining blank holes when a player concedes an
+// already-decided segment (see concedeSegment) — it counts as "decided" for
+// tallying purposes without awarding either side a hole.
 function normalizeWinner(w) {
-  return (w === 'A' || w === 'B' || w === 'Half') ? w : 'pending';
+  return (w === 'A' || w === 'B' || w === 'Half' || w === 'Conceded') ? w : 'pending';
 }
 async function loadShared() {
   const [sRes, rRes, hRes, hRedRes, p1Res, p2Res] = await Promise.all([
@@ -365,6 +381,15 @@ let scHoleIndex = 0; // 0-based, 0..17 — which hole the hbh view is showing
 // so a hole that's been tapped but not yet confirmed saved reads differently
 // from one that's actually landed in the sheet. See holeSaveState below.
 let lastSavedHolesByMatch = {};
+// Set the instant a segment transitions from "still in doubt" to
+// "mathematically decided" (see the .wpick-btn click handler in
+// renderHoleByHole) — { day, matchNum, field, hole } identifying which
+// segment triggered it. Cleared on Concede, on Continue Playing, on
+// switching matches, or if the segment somehow becomes undecided again
+// (e.g. a pick gets toggled back off). Kept as plain module state rather
+// than anything persisted — it only needs to survive re-renders of the
+// current match, not reloads.
+let concedeBannerFor = null;
 function cloneHoles(holes) { return JSON.parse(JSON.stringify(holes || [])); }
 function fieldsForDay(day) { return day === '2' ? ['BestBallWinner', 'MP1Winner', 'MP2Winner'] : ['Winner']; }
 // 'empty' — no result entered at all; 'saved' — matches the last confirmed-
@@ -439,6 +464,7 @@ async function onScMatchSelected() {
   const day = document.getElementById('scDay').value;
   const matchNum = document.getElementById('scMatch').value;
   scHoleIndex = 0;
+  concedeBannerFor = null;
   if (!matchNum) { currentHoles = []; renderScoringUI(day, matchNum); return; }
   const res = await apiGet('getScores', { day });
   const rows = res.success ? res.data.filter((r) => String(r.MatchNum) === String(matchNum)) : [];
@@ -658,6 +684,33 @@ function renderHoleByHole(day, matchNum) {
     </div>
   `;
 
+  // If a segment tapped into "decided, but holes still to enter" earlier and
+  // hasn't been resolved (Concede or Continue Playing) yet, show the banner
+  // on every render of this match — not just the one where it first
+  // triggered — so it isn't easy to miss by navigating to a different hole
+  // in the meantime. Re-checked against live data each render, so if the
+  // segment somehow becomes undecided again (a pick toggled back off) the
+  // banner quietly clears itself instead of lingering stale.
+  let concedeBannerHtml = '';
+  if (concedeBannerFor && concedeBannerFor.day === day && String(concedeBannerFor.matchNum) === String(matchNum)) {
+    const segResult = segmentResultForField(day, concedeBannerFor.field, concedeBannerFor.hole, pairingRow, currentHoles);
+    if (segResult.clinched && !segResult.final) {
+      const leaderName = segResult.leader === 'A' ? names.A : segResult.leader === 'B' ? names.B : '';
+      concedeBannerHtml = `
+        <div class="concede-banner">
+          <div class="concede-banner-title">Match outcome determined. Concede or continue playing?</div>
+          <div class="concede-banner-detail">${escapeHtml(leaderName)} ${escapeHtml(segResult.text)}</div>
+          <div class="concede-banner-actions">
+            <button type="button" class="concede-btn concede-yes" onclick="concedeSegment('${day}', '${matchNum}', '${concedeBannerFor.field}')">Concede</button>
+            <button type="button" class="concede-btn concede-no" onclick="dismissConcedeBanner('${day}', '${matchNum}')">Continue Playing</button>
+          </div>
+        </div>
+      `;
+    } else {
+      concedeBannerFor = null;
+    }
+  }
+
   wrap.innerHTML = `
     <div class="hbh-nav">
       <button type="button" onclick="stepHole(-1)">‹</button>
@@ -669,6 +722,7 @@ function renderHoleByHole(day, matchNum) {
       </select>
     </div>
     ${holeCompletionStripHtml(day, matchNum)}
+    ${concedeBannerHtml}
     <div class="hbh-seglabel">${escapeHtml(segLabel)}</div>
     ${blocksHtml}
     <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save now and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that. The row of hole numbers above shows what's actually confirmed: grey means nothing's entered, yellow means it's entered here but not yet confirmed saved, green means it's saved — tap any number to jump to that hole.</p>
@@ -683,9 +737,21 @@ function renderHoleByHole(day, matchNum) {
     btn.addEventListener('click', () => {
       const field = btn.dataset.wfield;
       const val = btn.dataset.wval;
+      const before = segmentResultForField(day, field, h, pairingRow, currentHoles);
       const current = currentHoles[scHoleIndex][field];
       // Tapping the already-selected choice clears it back to "not entered".
       currentHoles[scHoleIndex][field] = current === val ? '' : val;
+      const after = segmentResultForField(day, field, h, pairingRow, currentHoles);
+      // Newly clinched (wasn't decided before this tap, is now, with holes
+      // still left blank) — surface the Concede-or-continue banner. Already
+      // being clinched before this tap doesn't re-trigger it (so re-tapping
+      // other holes in an already-decided segment doesn't keep re-showing
+      // it), and un-clinching it (toggling a pick back off) clears it.
+      if (after.clinched && !after.final) {
+        if (!before.clinched) concedeBannerFor = { day, matchNum, field, hole: h };
+      } else if (concedeBannerFor && concedeBannerFor.day === day && String(concedeBannerFor.matchNum) === String(matchNum) && concedeBannerFor.field === field) {
+        concedeBannerFor = null;
+      }
       renderHoleByHole(day, matchNum);
       renderStatusLines(day, matchNum, pairingRow);
       scheduleAutosave(day, matchNum);
@@ -693,6 +759,39 @@ function renderHoleByHole(day, matchNum) {
   });
 
   renderStatusLines(day, matchNum, pairingRow);
+}
+
+// "Continue Playing" — just dismiss the banner, no other side effects; the
+// scorer keeps entering real results as normal.
+function dismissConcedeBanner(day, matchNum) {
+  concedeBannerFor = null;
+  renderHoleByHole(day, matchNum);
+}
+
+// "Concede" — fills every not-yet-entered hole in the conceded segment with
+// a 'Conceded' sentinel (the same Winner/BestBallWinner/MP1Winner/MP2Winner
+// column the real picks live in, so no schema change and every existing
+// tally/display helper handles it via normalizeWinner), saves it, and moves
+// on. A front-9 segment (Day 1 Captain's Choice, or Day 2 Best Ball) jumps
+// ahead to hole 10 to start the next segment; a back-9 segment (Day 1
+// Modified Alt Shot, or either Day 2 Match Play sub-match) just stops where
+// it is — it's either the day's last segment, or (Day 2 back 9) the sibling
+// Match Play sub-match is still being played on these same holes.
+function concedeSegment(day, matchNum, field) {
+  const isFrontNine = day === '2' ? field === 'BestBallWinner' : !(concedeBannerFor && concedeBannerFor.hole > 9);
+  const startHole = isFrontNine ? 1 : 10;
+  const endHole = isFrontNine ? 9 : 18;
+  for (let h = startHole; h <= endHole; h++) {
+    const row = currentHoles[h - 1];
+    if (row && !row[field]) row[field] = 'Conceded';
+  }
+  concedeBannerFor = null;
+  saveCurrentMatch(day, matchNum, currentHoles);
+  if (isFrontNine) {
+    jumpToHole(9); // hole 10 (0-based index 9) — start of the next segment
+  } else {
+    renderHoleByHole(day, matchNum);
+  }
 }
 
 // The nav row's primary action — saves whatever's on screen right now
@@ -825,17 +924,23 @@ function computeDay1Segment(holeRows, startHole, endHole) {
   return buildSegmentResult(aWins - bWins, decided, total - decided, total);
 }
 
+// `clinched` (only meaningful when final is false) means the segment is
+// already mathematically decided — the trailing leader can't be caught even
+// if every remaining hole goes the other way — but there are still blank
+// holes left to enter. That's the exact moment the Concede-or-continue
+// banner offers to stop entering the rest. Once final is true the segment is
+// actually finished either way, so clinched is irrelevant there.
 function buildSegmentResult(up, decided, remaining, total) {
   if (remaining === 0) {
     if (up > 0) return { leader: 'A', final: true, points: { A: 1, B: 0 }, text: `Final — ${up} up` };
     if (up < 0) return { leader: 'B', final: true, points: { A: 0, B: 1 }, text: `Final — ${Math.abs(up)} up` };
     return { leader: 'Half', final: true, points: { A: 0.5, B: 0.5 }, text: 'Final — Halved' };
   }
-  if (decided === 0) return { leader: 'pending', final: false, points: null, text: 'Not started' };
-  if (up === 0) return { leader: 'pending', final: false, points: null, text: `All Square thru ${decided}` };
+  if (decided === 0) return { leader: 'pending', final: false, points: null, text: 'Not started', clinched: false };
+  if (up === 0) return { leader: 'pending', final: false, points: null, text: `All Square thru ${decided}`, clinched: false };
   const leader = up > 0 ? 'A' : 'B';
   const clinched = Math.abs(up) > remaining;
-  return { leader, final: false, points: null, text: `${Math.abs(up)} up thru ${decided}${clinched ? ' (decided, holes still to enter)' : ''}` };
+  return { leader, final: false, points: null, text: `${Math.abs(up)} up thru ${decided}${clinched ? ' (decided, holes still to enter)' : ''}`, clinched };
 }
 
 // Day 2 Best Ball: team-level result per hole, stored directly (row.BestBallWinner).
@@ -861,6 +966,19 @@ function computeDay2MatchPlay(pairingRow, holeRows, mpNum) {
     if (w === 'A') aWins++; else if (w === 'B') bWins++;
   }
   return buildSegmentResult(aWins - bWins, decided, 9 - decided, 9);
+}
+
+// Given which winner field was just tapped (plus, for Day 1 where one field
+// covers both 9s, which hole it was tapped on), returns that field's segment
+// result — the one piece shared by the concede/continue transition check and
+// the banner itself, so both always look at exactly the same computation.
+function segmentResultForField(day, field, holeNum, pairingRow, holeRows) {
+  if (day === '2') {
+    if (field === 'BestBallWinner') return computeDay2BestBall(pairingRow, holeRows);
+    if (field === 'MP1Winner') return computeDay2MatchPlay(pairingRow, holeRows, 1);
+    return computeDay2MatchPlay(pairingRow, holeRows, 2);
+  }
+  return holeNum <= 9 ? computeDay1Segment(holeRows, 1, 9) : computeDay1Segment(holeRows, 10, 18);
 }
 
 function playerHandicap(name) {
@@ -1265,15 +1383,20 @@ function progressionStripHtml(results, activeStart) {
     }
     if (r === 'A') cum += 1;
     else if (r === 'B') cum -= 1;
-    // 'Half' leaves cum unchanged.
+    // 'Half' and 'Conceded' both leave cum unchanged — a conceded hole never
+    // happened, so it can't move the margin either.
     let label, cls;
     if (cum === 0) { label = 'AS'; cls = 'half'; }
     else { label = `${Math.abs(cum)} up`; cls = cum > 0 ? 'a' : 'b'; }
     // A halved hole doesn't move the running margin, so on its own it can
     // look identical to the hole before it (e.g. "1 up" -> "1 up"). Flag it
-    // explicitly with a small tie mark so a tie is never invisible.
+    // explicitly with a small tie mark so a tie is never invisible. A
+    // conceded hole gets its own distinct badge for the same reason — it
+    // also leaves the margin unchanged, but isn't a tie.
     const tieMark = r === 'Half' ? '<div class="prog-tie" title="Tied this hole">T</div>' : '';
-    cells += `<div class="prog-chip prog-${cls}" title="Hole ${hole}${r === 'Half' ? ' — tied' : ''}"><div class="prog-hole">${hole}</div><div class="prog-label">${label}</div>${tieMark}</div>`;
+    const concededMark = r === 'Conceded' ? '<div class="prog-conceded" title="Conceded">C</div>' : '';
+    const titleSuffix = r === 'Half' ? ' — tied' : r === 'Conceded' ? ' — conceded' : '';
+    cells += `<div class="prog-chip prog-${cls}" title="Hole ${hole}${titleSuffix}"><div class="prog-hole">${hole}</div><div class="prog-label">${label}</div>${tieMark}${concededMark}</div>`;
   }
   return cells;
 }
