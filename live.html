@@ -220,7 +220,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-08a';
+const LIVE_VERSION = '2026-09-08b';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -436,7 +436,21 @@ function getStoredPin(day, matchNum) {
 function storePin(day, matchNum, pin) {
   try { localStorage.setItem(pinStorageKey(day, matchNum), pin); } catch (e) {}
 }
+// ---- admin bypass ----
+// Entering the same Admin PIN used to unlock the admin page (Settings →
+// Admin PIN) into ANY match's lock screen unlocks every match on this
+// device, not just that one — so the admin doesn't need each foursome's
+// individual code to jump in and fix or enter a score. Stored once, device-
+// wide, separately from any per-match PIN this device may also remember.
+function adminUnlockKey() { return `legends_admin_${ENV}`; }
+function getAdminUnlocked() {
+  try { return localStorage.getItem(adminUnlockKey()) === '1'; } catch (e) { return false; }
+}
+function setAdminUnlocked(v) {
+  try { v ? localStorage.setItem(adminUnlockKey(), '1') : localStorage.removeItem(adminUnlockKey()); } catch (e) {}
+}
 function matchIsUnlocked(day, matchNum, pairingRow) {
+  if (getAdminUnlocked()) return true;
   // String(...) first: a PIN that's all digits (e.g. "0483") can come back from
   // the Sheet as an actual number rather than text, and a number has no
   // .trim() — this coercion keeps that from crashing the page either way.
@@ -540,9 +554,11 @@ function renderScoringUI(day, matchNum) {
     `;
     return;
   }
-  toggleEl.innerHTML = pairingRow && pairingRow.PIN
-    ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Forget PIN</button>`
-    : '';
+  toggleEl.innerHTML = getAdminUnlocked()
+    ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="exitAdminMode('${day}', '${matchNum}')">Exit Admin Mode</button>`
+    : (pairingRow && pairingRow.PIN
+        ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Forget PIN</button>`
+        : '');
   renderHoleByHole(day, matchNum);
 }
 
@@ -552,6 +568,14 @@ function renderScoringUI(day, matchNum) {
 // automatically re-locked next time it's selected — no need for this.)
 function lockMatch(day, matchNum) {
   try { localStorage.removeItem(pinStorageKey(day, matchNum)); } catch (e) {}
+  renderScoringUI(day, matchNum);
+}
+
+// Turns off this device's admin bypass (see matchIsUnlocked) — every match
+// goes back to needing either its own PIN or the Admin PIN again. Any
+// per-match PINs this device separately remembered are untouched.
+function exitAdminMode(day, matchNum) {
+  setAdminUnlocked(false);
   renderScoringUI(day, matchNum);
 }
 
@@ -578,7 +602,12 @@ function tryUnlockMatch(day, matchNum) {
   const entered = document.getElementById('matchPinInput').value.trim();
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
   const requiredPin = String((pairingRow && pairingRow.PIN) || '').trim();
-  if (entered && entered === requiredPin) {
+  const adminPin = String((settings && settings.AdminPIN) || '').trim();
+  if (adminPin && entered === adminPin) {
+    // The Admin PIN unlocks every match on this device, not just this one.
+    setAdminUnlocked(true);
+    renderScoringUI(day, matchNum);
+  } else if (entered && entered === requiredPin) {
     storePin(day, matchNum, entered);
     renderScoringUI(day, matchNum);
   } else {
