@@ -176,7 +176,7 @@
   <section id="tab-scoring" class="tab-panel">
     <div class="card">
       <h2>Enter Scores</h2>
-      <p class="sc-intro-label">Pick the day and your match from the drop-down window below.</p>
+      <p class="sc-intro-label">1. Pick the day and your match from the drop-down window below.</p>
       <div class="row">
         <select id="scDay"><option value="1">Day 1</option><option value="2">Day 2</option></select>
         <select id="scMatch"></select>
@@ -229,7 +229,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-10b';
+const LIVE_VERSION = '2026-09-10c';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -729,7 +729,7 @@ function renderCurrentEntryView(day, matchNum) {
 }
 function scModeToggleHtml() {
   return `
-    <p class="sc-intro-label">Choose whether you want to enter hole-by-hole scores or just the match winner.</p>
+    <p class="sc-intro-label">2. Choose whether you want to enter hole-by-hole scores or just the match winner.</p>
     <button type="button" class="view-toggle-btn ${scEntryMode === 'holebyhole' ? 'active' : ''}" onclick="setScEntryMode('holebyhole')">Hole-by-Hole</button>
     <button type="button" class="view-toggle-btn ${scEntryMode === 'matchwinner' ? 'active' : ''}" onclick="setScEntryMode('matchwinner')">Enter Match Winner</button>
   `;
@@ -814,7 +814,8 @@ function renderMatchWinnerMode(day, matchNum) {
       matchWinnerBlockHtml('Winner', 10, 18, 'Back 9: Modified Alternate Shot', names.A, names.B, colors.A, colors.B);
   }
   wrap.innerHTML = `
-    <p class="hint">Pick each 9's overall winner directly — no need to enter every hole. Saves immediately when you tap a pick.</p>
+    <p class="sc-intro-label">3. Pick each 9's overall winner below.</p>
+    <p class="hint" style="margin:0 0 8px;">No need to enter every hole — saves immediately when you tap a pick.</p>
     ${blocksHtml}
   `;
   wrap.querySelectorAll('.mw-segment-block .wpick-btn').forEach((btn) => {
@@ -862,6 +863,10 @@ function renderHoleByHole(day, matchNum) {
     ? (day === '2' ? 'Best Ball (front 9)' : "Captain's Choice (front 9)")
     : (day === '2' ? 'Individual Match Play (back 9)' : 'Modified Alternate Shot (back 9)');
   const saveBtnHtml = `<button type="button" class="hbh-save-next" onclick="saveAndAdvance('${day}', '${matchNum}')">Save now and move to hole ${nextH}</button>`;
+  // The dropdown just below already jumps straight to this match's own Start
+  // Hole (see onScMatchSelected) — this line just says so in plain words,
+  // for anyone who'd otherwise wonder why it's not showing hole 1.
+  const startHoleText = pairingRow && pairingRow.StartHole ? escapeHtml(String(pairingRow.StartHole)) : null;
 
   let blocksHtml;
   if (day === '2') {
@@ -915,6 +920,8 @@ function renderHoleByHole(day, matchNum) {
   }
 
   wrap.innerHTML = `
+    <p class="sc-intro-label">3. Select Winner (or Tie) below and advance to the next hole.</p>
+    ${startHoleText ? `<p class="hint" style="font-weight:600; margin:0 0 8px;">Your match is starting on Hole ${startHoleText}.</p>` : ''}
     <div class="hbh-nav">
       <button type="button" onclick="stepHole(-1)">‹</button>
       <select id="hbhHoleSelect" onchange="jumpToHole(this.value)">
