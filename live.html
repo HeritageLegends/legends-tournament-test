@@ -174,6 +174,7 @@
         <select id="scMatch"></select>
         <span id="saveIndicator" class="save-indicator"></span>
       </div>
+      <div class="row" id="scModeToggle" style="margin-top:4px;"></div>
       <div id="scStatusLines"></div>
       <div class="row" id="scViewToggle" style="margin-top:4px;"></div>
       <div id="scGridWrap"></div>
@@ -220,7 +221,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-08b';
+const LIVE_VERSION = '2026-09-10';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -335,6 +336,19 @@ async function loadShared() {
 
 function teamNames() {
   return { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
+}
+function teamColors() {
+  return { A: settings.TeamAColor || '#ADD8E6', B: settings.TeamBColor || '#F08080' };
+}
+// A small colored circle for a team's chosen branding color, meant to sit
+// right before that team's name wherever it's displayed — kept separate from
+// teamNames()'s plain strings so those stay safe to use anywhere, HTML or not.
+function teamDotHtml(color) {
+  const c = escapeHtml(color || '#999999');
+  return `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${c}; border:1px solid rgba(0,0,0,0.35); margin-right:5px; vertical-align:middle; flex-shrink:0;"></span>`;
+}
+function teamNameHtml(name, color) {
+  return `${teamDotHtml(color)}${escapeHtml(name)}`;
 }
 // Mirrors isDayLocked_ in Code.gs — the server enforces this on every save
 // regardless, but checking it here too lets the UI show a clear "locked"
@@ -534,12 +548,15 @@ function buildHoleGrid(day, matchNum, existingRows) {
   return holes;
 }
 
-// Top-level dispatcher: goes straight to the one-hole-at-a-time entry view
-// (once a match is picked and unlocked) — no alternate view to toggle to.
+// Top-level dispatcher: once a match is picked and unlocked, shows either the
+// one-hole-at-a-time entry view or the "Enter Match Winner" segment-level
+// view, per scEntryMode (see scModeToggleHtml/setScEntryMode).
 function renderScoringUI(day, matchNum) {
   const toggleEl = document.getElementById('scViewToggle');
+  const modeEl = document.getElementById('scModeToggle');
   if (!matchNum) {
     toggleEl.innerHTML = '';
+    if (modeEl) modeEl.innerHTML = '';
     document.getElementById('scGridWrap').innerHTML = '<p class="hint">Set up this match\'s pairing first (Admin → Pairings) before entering scores.</p>';
     document.getElementById('scStatusLines').innerHTML = '';
     return;
@@ -547,11 +564,13 @@ function renderScoringUI(day, matchNum) {
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
   if (!matchIsUnlocked(day, matchNum, pairingRow)) {
     toggleEl.innerHTML = '';
+    if (modeEl) modeEl.innerHTML = '';
     renderPinLock(day, matchNum, pairingRow);
     return;
   }
   if (dayIsLocked(day)) {
     toggleEl.innerHTML = '';
+    if (modeEl) modeEl.innerHTML = '';
     document.getElementById('scStatusLines').innerHTML = '';
     document.getElementById('scGridWrap').innerHTML = `
       <div class="card" style="margin:0; background:#fdecea; border-color:var(--error);">
@@ -572,7 +591,8 @@ function renderScoringUI(day, matchNum) {
           ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Forget PIN</button>`
           : '');
   }
-  renderHoleByHole(day, matchNum);
+  if (modeEl) modeEl.innerHTML = scModeToggleHtml();
+  renderCurrentEntryView(day, matchNum);
 }
 
 // Clears this device's remembered PIN for this match and re-shows the lock
@@ -643,27 +663,152 @@ function playerStrokeNoteHtml(name, hole) {
 // Button text: the Tie button just says "Tie"; each side's own button says
 // "<name> Wins" so the row is self-explanatory without a separate label line
 // above it.
-function winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml) {
-  const btn = (v, rawLabel, cls) => {
+function winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor) {
+  const btn = (v, rawLabel, cls, color) => {
     const label = v === 'Half' ? rawLabel : `${rawLabel} Wins`;
-    return `<button type="button" class="wpick-btn ${val === v ? 'active ' + cls : ''}" data-wfield="${field}" data-wval="${v}">${escapeHtml(label)}</button>`;
+    const dot = color ? teamDotHtml(color) : '';
+    return `<button type="button" class="wpick-btn ${val === v ? 'active ' + cls : ''}" data-wfield="${field}" data-wval="${v}">${dot}${escapeHtml(label)}</button>`;
   };
-  return `<div class="wpick-row">${btn('A', aLabel, 'wpick-a')}${btn('Half', 'Tie', 'wpick-half')}${btn('B', bLabel, 'wpick-b')}${extraBtnHtml || ''}</div>`;
+  return `<div class="wpick-row">${btn('A', aLabel, 'wpick-a', aColor)}${btn('Half', 'Tie', 'wpick-half')}${btn('B', bLabel, 'wpick-b', bColor)}${extraBtnHtml || ''}</div>`;
 }
 // Team-vs-team pick (Day 1 both segments, Day 2 Best Ball) — just the three
 // buttons, since each button's own "<Team> Wins" text already says who it's
 // for. extraBtnHtml (optional) is appended into the same button row — used
 // to fold the "Save and move to hole N" button onto this line.
-function teamWinnerBlockHtml(field, holeRow, hole, aLabel, bLabel, extraBtnHtml) {
+function teamWinnerBlockHtml(field, holeRow, hole, aLabel, bLabel, extraBtnHtml, aColor, bColor) {
   const val = holeRow[field] || '';
-  return `<div class="wpick-block">${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml)}</div>`;
+  return `<div class="wpick-block">${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor)}</div>`;
 }
 // Player-vs-player pick (Day 2 Individual Match Play, one block per MP slot).
-// extraBtnHtml (optional) is appended into the same button row.
-function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName, extraBtnHtml) {
+// extraBtnHtml (optional) is appended into the same button row. aColor/bColor
+// (optional) mark which team each player belongs to with a small dot, since
+// this is otherwise a player-vs-player screen with no team names in sight.
+function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName, extraBtnHtml, aColor, bColor) {
   const val = holeRow[field] || '';
   const aLabel = lastNameOrUnassigned(aName), bLabel = lastNameOrUnassigned(bName);
-  return `<div class="wpick-block"><div class="wpick-sides"><div class="wpick-side">${escapeHtml(aLabel)}${playerStrokeNoteHtml(aName, hole)}</div><div class="wpick-side">${escapeHtml(bLabel)}${playerStrokeNoteHtml(bName, hole)}</div></div>${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml)}</div>`;
+  const aDot = aColor ? teamDotHtml(aColor) : '';
+  const bDot = bColor ? teamDotHtml(bColor) : '';
+  return `<div class="wpick-block"><div class="wpick-sides"><div class="wpick-side">${aDot}${escapeHtml(aLabel)}${playerStrokeNoteHtml(aName, hole)}</div><div class="wpick-side">${bDot}${escapeHtml(bLabel)}${playerStrokeNoteHtml(bName, hole)}</div></div>${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor)}</div>`;
+}
+
+// ---- "Enter Match Winner" mode: one person per team declares each 9's (or
+// each Match Play pairing's) overall outcome directly, with no hole-by-hole
+// entry at all. Implemented without any backend/schema change: picking a
+// winner just writes that same value across every hole in the segment's
+// 9-hole range through the existing per-hole Winner/BestBallWinner/
+// MP#Winner fields, then saves through the same saveMatchScores endpoint
+// hole-by-hole entry already uses — every existing tally/status/scorecard
+// helper reads the result the same way either way, no matter how it got
+// entered.
+let scEntryMode = 'holebyhole'; // 'holebyhole' | 'matchwinner' — page-level UI choice, not saved anywhere
+// Re-renders whichever entry view is currently selected, for a match already
+// known to be picked/unlocked/unlocked-for-editing — used both by the
+// top-level dispatcher (renderScoringUI) and by anything (like a verified
+// save) that needs to refresh the visible entry UI without redoing the
+// PIN/day-lock checks that got it on screen in the first place.
+function renderCurrentEntryView(day, matchNum) {
+  if (scEntryMode === 'matchwinner') {
+    renderMatchWinnerMode(day, matchNum);
+  } else {
+    renderHoleByHole(day, matchNum);
+  }
+}
+function scModeToggleHtml() {
+  return `
+    <button type="button" class="view-toggle-btn ${scEntryMode === 'holebyhole' ? 'active' : ''}" onclick="setScEntryMode('holebyhole')">Hole-by-Hole</button>
+    <button type="button" class="view-toggle-btn ${scEntryMode === 'matchwinner' ? 'active' : ''}" onclick="setScEntryMode('matchwinner')">Enter Match Winner</button>
+  `;
+}
+function setScEntryMode(mode) {
+  if (scEntryMode === mode) return;
+  scEntryMode = mode;
+  const day = document.getElementById('scDay').value;
+  const matchNum = document.getElementById('scMatch').value;
+  renderScoringUI(day, matchNum);
+}
+// Returns 'A' / 'B' / 'Half' / some other sentinel (e.g. 'Conceded') if every
+// hole in the range already carries that exact same value, blank ('' -> null)
+// if none of them are entered yet, or null if the holes are a genuine mix
+// (real hole-by-hole progress) — which is exactly the case worth warning
+// about before this mode overwrites it.
+function isSegmentUniform(field, startHole, endHole) {
+  let val = null;
+  for (let h = startHole; h <= endHole; h++) {
+    const v = (currentHoles[h - 1] || {})[field] || '';
+    if (h === startHole) { val = v; continue; }
+    if (v !== val) return null;
+  }
+  return val || null;
+}
+function segmentHasAnyEntry(field, startHole, endHole) {
+  for (let h = startHole; h <= endHole; h++) {
+    if ((currentHoles[h - 1] || {})[field]) return true;
+  }
+  return false;
+}
+// Applies a direct match-winner pick across an entire 9-hole segment. Tapping
+// the pick that's already set for the whole segment clears it back to blank
+// (an undo, mirroring the per-hole pick buttons' own toggle-off behavior);
+// tapping anything else overwrites the whole segment — with a confirmation
+// first if there's any existing entry there, real hole-by-hole progress
+// included, so a scorekeeper can't lose that work with one stray tap.
+function pickMatchWinner(day, matchNum, field, startHole, endHole, value) {
+  const current = isSegmentUniform(field, startHole, endHole);
+  if (current === value) {
+    if (!confirm(`Clear this pick and go back to no result for holes ${startHole}–${endHole}?`)) return;
+    for (let h = startHole; h <= endHole; h++) { if (currentHoles[h - 1]) currentHoles[h - 1][field] = ''; }
+  } else {
+    if (segmentHasAnyEntry(field, startHole, endHole)) {
+      if (!confirm(`Holes ${startHole}–${endHole} already have scores entered for this segment. Overwrite them all with this pick?`)) return;
+    }
+    for (let h = startHole; h <= endHole; h++) { if (currentHoles[h - 1]) currentHoles[h - 1][field] = value; }
+  }
+  saveCurrentMatch(day, matchNum, currentHoles);
+  renderScoringUI(day, matchNum);
+}
+function matchWinnerBlockHtml(field, startHole, endHole, label, aLabel, bLabel, aColor, bColor) {
+  const current = isSegmentUniform(field, startHole, endHole);
+  const hasAnyEntry = segmentHasAnyEntry(field, startHole, endHole);
+  const noteHtml = (current === 'A' || current === 'B' || current === 'Half')
+    ? `<span class="hint">Currently set: ${current === 'Half' ? 'Tie' : escapeHtml(current === 'A' ? aLabel : bLabel)} for the whole 9</span>`
+    : hasAnyEntry
+      ? `<span class="hint" style="color:#b8860b; font-weight:600;">This 9 already has scores entered — picking a winner below will overwrite them</span>`
+      : `<span class="hint">Not yet entered</span>`;
+  return `
+    <div class="wpick-block mw-segment-block" data-field="${escapeHtml(field)}" data-start="${startHole}" data-end="${endHole}">
+      <div class="hbh-seglabel">${escapeHtml(label)}</div>
+      ${winnerButtonsHtml(field, current || '', aLabel, bLabel, '', aColor, bColor)}
+      <div style="margin-top:4px;">${noteHtml}</div>
+    </div>
+  `;
+}
+function renderMatchWinnerMode(day, matchNum) {
+  const wrap = document.getElementById('scGridWrap');
+  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
+  const names = teamNames();
+  const colors = teamColors();
+  let blocksHtml;
+  if (day === '2') {
+    blocksHtml =
+      matchWinnerBlockHtml('BestBallWinner', 1, 9, 'Front 9: Best Ball', names.A, names.B, colors.A, colors.B) +
+      matchWinnerBlockHtml('MP1Winner', 10, 18, `Back 9: Match Play — ${lastNameOrUnassigned(pairingRow.MP1_TeamA)} vs ${lastNameOrUnassigned(pairingRow.MP1_TeamB)}`, lastNameOrUnassigned(pairingRow.MP1_TeamA), lastNameOrUnassigned(pairingRow.MP1_TeamB), colors.A, colors.B) +
+      matchWinnerBlockHtml('MP2Winner', 10, 18, `Back 9: Match Play — ${lastNameOrUnassigned(pairingRow.MP2_TeamA)} vs ${lastNameOrUnassigned(pairingRow.MP2_TeamB)}`, lastNameOrUnassigned(pairingRow.MP2_TeamA), lastNameOrUnassigned(pairingRow.MP2_TeamB), colors.A, colors.B);
+  } else {
+    blocksHtml =
+      matchWinnerBlockHtml('Winner', 1, 9, "Front 9: Captain's Choice", names.A, names.B, colors.A, colors.B) +
+      matchWinnerBlockHtml('Winner', 10, 18, 'Back 9: Modified Alternate Shot', names.A, names.B, colors.A, colors.B);
+  }
+  wrap.innerHTML = `
+    <p class="hint">Pick each 9's overall winner directly — no need to enter every hole. Saves immediately when you tap a pick.</p>
+    ${blocksHtml}
+  `;
+  wrap.querySelectorAll('.mw-segment-block .wpick-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const block = btn.closest('.mw-segment-block');
+      pickMatchWinner(day, matchNum, block.dataset.field, parseInt(block.dataset.start, 10), parseInt(block.dataset.end, 10), btn.dataset.wval);
+    });
+  });
+  renderStatusLines(day, matchNum, pairingRow);
 }
 
 // Compact 18-dot map of this match's holes — click any dot to jump there,
@@ -694,6 +839,7 @@ function renderHoleByHole(day, matchNum) {
   const wrap = document.getElementById('scGridWrap');
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
   const names = teamNames();
+  const colors = teamColors();
   const h = scHoleIndex + 1; // 1-based hole number
   const nextH = (h % 18) + 1; // wraps 18 -> 1, same as stepHole(1)
   const holeRow = currentHoles[scHoleIndex];
@@ -705,13 +851,13 @@ function renderHoleByHole(day, matchNum) {
   let blocksHtml;
   if (day === '2') {
     if (h <= 9) {
-      blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, names.A, names.B, saveBtnHtml);
+      blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, names.A, names.B, saveBtnHtml, colors.A, colors.B);
     } else {
-      blocksHtml = matchupWinnerBlockHtml('MP1Winner', holeRow, h, pairingRow.MP1_TeamA, pairingRow.MP1_TeamB)
-        + matchupWinnerBlockHtml('MP2Winner', holeRow, h, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB, saveBtnHtml);
+      blocksHtml = matchupWinnerBlockHtml('MP1Winner', holeRow, h, pairingRow.MP1_TeamA, pairingRow.MP1_TeamB, null, colors.A, colors.B)
+        + matchupWinnerBlockHtml('MP2Winner', holeRow, h, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB, saveBtnHtml, colors.A, colors.B);
     }
   } else {
-    blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B, saveBtnHtml);
+    blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B, saveBtnHtml, colors.A, colors.B);
   }
 
   // A mirror of this one match's Scoreboard → All Match Scorecards entry,
@@ -911,7 +1057,7 @@ async function saveCurrentMatch(day, matchNum, holes) {
     // blank."
     if (holesMatchServerRows(day, holes, res.data)) {
       lastSavedHolesByMatch[key] = cloneHoles(holes);
-      if (isCurrentlyViewed()) { setSaveIndicator('saved', 'Saved ✓'); renderHoleByHole(day, matchNum); }
+      if (isCurrentlyViewed()) { setSaveIndicator('saved', 'Saved ✓'); renderCurrentEntryView(day, matchNum); }
     } else if (isCurrentlyViewed()) {
       setSaveIndicator('error', 'Save didn’t verify — try again');
     }
@@ -1217,10 +1363,10 @@ async function loadLeaderboardView(day) {
     <div class="lbx-wrap">
       <table class="lbx-table">
         <thead>
-          <tr class="lbx-head"><th>Points</th><th class="lbx-pair-h">${escapeHtml(names.A)}</th><th>Match</th><th class="lbx-pair-h">${escapeHtml(names.B)}</th><th>Points</th></tr>
+          <tr class="lbx-head"><th>Points</th><th class="lbx-pair-h">${teamNameHtml(names.A, teamColors().A)}</th><th>Match</th><th class="lbx-pair-h">${teamNameHtml(names.B, teamColors().B)}</th><th>Points</th></tr>
         </thead>
         <tbody>${rowsHtml || `<tr><td colspan="5" class="hint">No matches set up yet.</td></tr>`}</tbody>
-        ${rowsHtml ? `<tfoot><tr class="lbx-total"><td>${formatPts(totalA)}</td><td class="lbx-pair-h">${escapeHtml(names.A)}</td><td>TOTAL</td><td class="lbx-pair-h">${escapeHtml(names.B)}</td><td>${formatPts(totalB)}</td></tr></tfoot>` : ''}
+        ${rowsHtml ? `<tfoot><tr class="lbx-total"><td>${formatPts(totalA)}</td><td class="lbx-pair-h">${teamNameHtml(names.A, teamColors().A)}</td><td>TOTAL</td><td class="lbx-pair-h">${teamNameHtml(names.B, teamColors().B)}</td><td>${formatPts(totalB)}</td></tr></tfoot>` : ''}
       </table>
     </div>
   `;
@@ -1287,10 +1433,10 @@ async function loadTournamentTotal() {
     <div class="lbx-wrap">
       <table class="lbx-table">
         <thead>
-          <tr class="lbx-head"><th>Points</th><th class="lbx-pair-h">${escapeHtml(names.A)}</th><th>Match</th><th class="lbx-pair-h">${escapeHtml(names.B)}</th><th>Points</th></tr>
+          <tr class="lbx-head"><th>Points</th><th class="lbx-pair-h">${teamNameHtml(names.A, teamColors().A)}</th><th>Match</th><th class="lbx-pair-h">${teamNameHtml(names.B, teamColors().B)}</th><th>Points</th></tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
-        <tfoot><tr class="lbx-total"><td>${formatPts(grandA)}</td><td class="lbx-pair-h">${escapeHtml(names.A)}</td><td>TOTAL</td><td class="lbx-pair-h">${escapeHtml(names.B)}</td><td>${formatPts(grandB)}</td></tr></tfoot>
+        <tfoot><tr class="lbx-total"><td>${formatPts(grandA)}</td><td class="lbx-pair-h">${teamNameHtml(names.A, teamColors().A)}</td><td>TOTAL</td><td class="lbx-pair-h">${teamNameHtml(names.B, teamColors().B)}</td><td>${formatPts(grandB)}</td></tr></tfoot>
       </table>
     </div>
   `;
@@ -1349,7 +1495,7 @@ function indivCellHtml(n) {
   return n > 0 ? formatPts(n) : '&ndash;';
 }
 
-function individualTableHtml(teamLabel, players, pts) {
+function individualTableHtml(teamLabel, teamColor, players, pts) {
   const blank = { cc: 0, altShot: 0, bestBall: 0, matchPlay: 0 };
   const rowsHtml = players.map((name) => {
     const p = pts[name] || blank;
@@ -1366,7 +1512,7 @@ function individualTableHtml(teamLabel, players, pts) {
     <div class="indiv-table-wrap">
       <table class="indiv-table">
         <thead>
-          <tr class="indiv-team-row"><th colspan="6">${escapeHtml(teamLabel)}</th></tr>
+          <tr class="indiv-team-row"><th colspan="6">${teamNameHtml(teamLabel, teamColor)}</th></tr>
           <tr class="indiv-daygroup-row"><th></th><th colspan="2">Day 1</th><th colspan="2">Day 2</th><th></th></tr>
           <tr class="indiv-col-row"><th></th><th>Captain's Choice</th><th>Alternate Shot</th><th>Best Ball</th><th>Match Play</th><th>Total</th></tr>
         </thead>
@@ -1390,14 +1536,15 @@ async function loadIndividualResults() {
     };
   });
   const names = teamNames();
+  const colors = teamColors();
   // Grouped by each player's Roster team assignment (Admin → Roster), not by
   // who they happened to be paired with in any one match.
   const teamAPlayers = roster.filter((p) => p.Team === 'A' && p.Name).map((p) => p.Name);
   const teamBPlayers = roster.filter((p) => p.Team === 'B' && p.Name).map((p) => p.Name);
   document.getElementById('sbIndividual').innerHTML = `
     <div class="indiv-wrap">
-      ${individualTableHtml(names.A, teamAPlayers, pts)}
-      ${individualTableHtml(names.B, teamBPlayers, pts)}
+      ${individualTableHtml(names.A, colors.A, teamAPlayers, pts)}
+      ${individualTableHtml(names.B, colors.B, teamBPlayers, pts)}
     </div>
   `;
 }

@@ -129,11 +129,14 @@
         <div class="field-row">
           <div class="field"><label>Team A Name <span class="hint">(placeholder until captains decide)</span></label><input id="s_TeamAName" type="text"></div>
           <div class="field"><label>Team A Captain</label><input id="s_TeamACaptain" type="text"></div>
+          <div class="field" style="flex:0 0 auto; min-width:0;"><label>Team A Color</label><input id="s_TeamAColor" type="color" style="width:52px; height:36px; padding:2px; cursor:pointer;"></div>
         </div>
         <div class="field-row">
           <div class="field"><label>Team B Name <span class="hint">(placeholder until captains decide)</span></label><input id="s_TeamBName" type="text"></div>
           <div class="field"><label>Team B Captain</label><input id="s_TeamBCaptain" type="text"></div>
+          <div class="field" style="flex:0 0 auto; min-width:0;"><label>Team B Color</label><input id="s_TeamBColor" type="color" style="width:52px; height:36px; padding:2px; cursor:pointer;"></div>
         </div>
+        <p class="hint">These colors show up as a small dot next to each team's name throughout the app (Live Scoring, Scoreboard, Individual Results) and on printed scorecards.</p>
         <button class="primary" onclick="saveSettings()">Save Settings</button>
         <div id="settingsStatus" class="status"></div>
       </div>
@@ -290,17 +293,17 @@
           <button class="secondary" onclick="printSampleScorecard()">Preview Sample Scorecard</button>
         </div>
         <label style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:0.9rem;">
-          <input type="checkbox" id="printCompactToggle">
-          Pro shop paper (two cards per 11&Prime;&times;8.5&Prime; sheet, each 11&Prime;&times;4.25&Prime;
-          — front 9 and back 9 stacked on one card instead of two separate pages)
+          <input type="checkbox" id="printDetailedToggle">
+          Detailed scorecards (one match per page — the older, larger layout, instead of the pro shop's
+          two-cards-per-11&Prime;&times;8.5&Prime;-sheet paper)
         </label>
         <p class="hint">Haven't set that day's pairings yet? "Preview Sample Scorecard" shows the layout
           with made-up players so you can check it over (and see your Hole Handicaps table reflected in
-          it, for Day 2) before real teams are assembled. Checking "Pro shop paper" above switches both
-          buttons to the compact layout sized for the pro shop's pre-cut half-page scorecard stock — the
-          "Circle Winning Team" box is replaced by a narrow Winner column at the right of each table,
-          since there's no room for a separate box, but everything still gets written in by hand the
-          same way.</p>
+          it, for Day 2) before real teams are assembled. Pro shop paper is the default for both buttons —
+          front 9 and back 9 stacked on one 11&Prime;&times;4.25&Prime; card, with a narrow Winner column
+          at the right of each table instead of a separate "Circle Winning Team" box, since there's no
+          room for one. Check "Detailed scorecards" above to switch both buttons back to the older
+          one-match-per-page layout with the full-size side-by-side Circle Winning Team box.</p>
         <div id="printStatus" class="status"></div>
       </div>
     </section>
@@ -321,7 +324,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-10b';
+const ADMIN_VERSION = '2026-09-10c';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -502,8 +505,10 @@ function populateSettingsForm() {
   document.getElementById('s_Day2Date').value = settings.Day2Date || '';
   document.getElementById('s_TeamAName').value = settings.TeamAName || 'Team A';
   document.getElementById('s_TeamACaptain').value = settings.TeamACaptain || '';
+  document.getElementById('s_TeamAColor').value = settings.TeamAColor || '#ADD8E6';
   document.getElementById('s_TeamBName').value = settings.TeamBName || 'Team B';
   document.getElementById('s_TeamBCaptain').value = settings.TeamBCaptain || '';
+  document.getElementById('s_TeamBColor').value = settings.TeamBColor || '#F08080';
   document.getElementById('s_AdminPIN').value = settings.AdminPIN || '';
   document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament';
   updateDayLockUI();
@@ -582,8 +587,10 @@ async function saveSettings() {
     Day2Date: document.getElementById('s_Day2Date').value,
     TeamAName: document.getElementById('s_TeamAName').value || 'Team A',
     TeamACaptain: document.getElementById('s_TeamACaptain').value,
+    TeamAColor: document.getElementById('s_TeamAColor').value || '#ADD8E6',
     TeamBName: document.getElementById('s_TeamBName').value || 'Team B',
     TeamBCaptain: document.getElementById('s_TeamBCaptain').value,
+    TeamBColor: document.getElementById('s_TeamBColor').value || '#F08080',
   };
   try {
     const res = await apiPost('saveSettings', { settings: JSON.stringify(newSettings) });
@@ -1037,7 +1044,7 @@ function populatePrintMatchSelect() {
 }
 
 const PRINT_CSS = `
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; padding: 24px; }
   .scorecard { page-break-after: always; margin-bottom: 24px; }
   .scorecard:last-child { page-break-after: auto; }
@@ -1081,7 +1088,7 @@ const PRINT_CSS = `
 // by hand, the same trick the 2018 paper card used to fit a Best Ball segment
 // and a Match Play segment onto one physical card.
 const COMPACT_PRINT_CSS = `
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   html, body { margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; color: #111; }
   @page { size: 11in 8.5in; margin: 0; }
@@ -1144,20 +1151,20 @@ function scorecardCardHtml(row, rosterList, isSample) {
     return `${escapeHtml(name)}${teeHtml}`;
   };
 
-  const bestBallRowHtml = (teamName, p1, p2, startHole, endHole) => {
+  const bestBallRowHtml = (teamName, color, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? `<br><span class="sc-players">${playerLabelWithStrokes(p1)} + ${playerLabelWithStrokes(p2)}</span>` : '';
-    return `<tr><td class="sc-name">${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
+    return `<tr><td class="sc-name">${teamNameHtml(teamName, color)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
   };
-  const matchPlayRowHtml = (name, teamName, startHole, endHole) => {
-    return `<tr><td class="sc-name">${playerLabelWithStrokes(name)} <span class="sc-players">&mdash; ${escapeHtml(teamName)}</span></td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
+  const matchPlayRowHtml = (name, teamName, color, startHole, endHole) => {
+    return `<tr><td class="sc-name">${playerLabelWithStrokes(name)} <span class="sc-players">&mdash; ${teamNameHtml(teamName, color)}</span></td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
   };
 
-  const frontRows = [[names.A, row.TeamA_P1, row.TeamA_P2], [names.B, row.TeamB_P1, row.TeamB_P2]]
-    .map(([teamName, p1, p2]) => bestBallRowHtml(teamName, p1, p2, 1, 9))
+  const frontRows = [[names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2], [names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2]]
+    .map(([teamName, color, p1, p2]) => bestBallRowHtml(teamName, color, p1, p2, 1, 9))
     .join('');
   const backRows = [
-    matchPlayRowHtml(row.TeamA_P1, names.A, 10, 18) + matchPlayRowHtml(row.TeamB_P1, names.B, 10, 18),
-    matchPlayRowHtml(row.TeamA_P2, names.A, 10, 18) + matchPlayRowHtml(row.TeamB_P2, names.B, 10, 18),
+    matchPlayRowHtml(row.TeamA_P1, names.A, settings.TeamAColor, 10, 18) + matchPlayRowHtml(row.TeamB_P1, names.B, settings.TeamBColor, 10, 18),
+    matchPlayRowHtml(row.TeamA_P2, names.A, settings.TeamAColor, 10, 18) + matchPlayRowHtml(row.TeamB_P2, names.B, settings.TeamBColor, 10, 18),
   ].join(segSpacerRowHtml());
 
   const frontSegment = printSegmentHtml('Front 9: Best Ball', instruction, 1, 9, startHoleNum, frontRows, 'Hole', [names.A, names.B]);
@@ -1168,7 +1175,7 @@ function scorecardCardHtml(row, rosterList, isSample) {
       ${isSample ? '<div class="sc-sample-badge">SAMPLE — for layout preview only, not a real match</div>' : ''}
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
       <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
-      <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
+      <div class="sc-teams">${teamNameHtml(names.A, settings.TeamAColor)} vs ${teamNameHtml(names.B, settings.TeamBColor)}</div>
       ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
       ${frontSegment}
       ${backSegment}
@@ -1193,14 +1200,14 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
     const p = rosterList.find((r) => r.Name === name);
     return p && p.Tee ? `${escapeHtml(name)} <span class="sc-tee">(${escapeHtml(p.Tee)})</span>` : escapeHtml(name);
   };
-  const teamRowHtml = (teamName, p1, p2, startHole, endHole) => {
+  const teamRowHtml = (teamName, color, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? `<br><span class="sc-players">${nameWithTee(p1)} + ${nameWithTee(p2)}</span>` : '';
-    return `<tr><td class="sc-name">${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
+    return `<tr><td class="sc-name">${teamNameHtml(teamName, color)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
   };
-  const frontRows = [[names.A, row.TeamA_P1, row.TeamA_P2], [names.B, row.TeamB_P1, row.TeamB_P2]]
-    .map(([teamName, p1, p2]) => teamRowHtml(teamName, p1, p2, 1, 9)).join('');
-  const backRows = [[names.A, row.TeamA_P1, row.TeamA_P2], [names.B, row.TeamB_P1, row.TeamB_P2]]
-    .map(([teamName, p1, p2]) => teamRowHtml(teamName, p1, p2, 10, 18)).join('');
+  const frontRows = [[names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2], [names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2]]
+    .map(([teamName, color, p1, p2]) => teamRowHtml(teamName, color, p1, p2, 1, 9)).join('');
+  const backRows = [[names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2], [names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2]]
+    .map(([teamName, color, p1, p2]) => teamRowHtml(teamName, color, p1, p2, 10, 18)).join('');
 
   const frontSegment = printSegmentHtml("Front 9: Captain's Choice", instruction, 1, 9, startHoleNum, frontRows, 'Hole', [names.A, names.B]);
   const backSegment = printSegmentHtml('Back 9: Modified Alternate Shot', instruction, 10, 18, startHoleNum, backRows, 'Hole', [names.A, names.B]);
@@ -1210,7 +1217,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
       ${isSample ? '<div class="sc-sample-badge">SAMPLE — for layout preview only, not a real match</div>' : ''}
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
       <div class="sc-sub">Day 1 &mdash; ${escapeHtml(formatDateNice(settings.Day1Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
-      <div class="sc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</div>
+      <div class="sc-teams">${teamNameHtml(names.A, settings.TeamAColor)} vs ${teamNameHtml(names.B, settings.TeamBColor)}</div>
       ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
       ${frontSegment}
       ${backSegment}
@@ -1225,7 +1232,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
 // otherwise), but the players and their handicaps are fictional.
 function printSampleScorecard() {
   const day = document.getElementById('printDaySelect').value;
-  const compact = document.getElementById('printCompactToggle').checked;
+  const compact = !document.getElementById('printDetailedToggle').checked;
   let cardHtml;
   if (day === '1') {
     const sampleRosterDay1 = [
@@ -1315,7 +1322,7 @@ function ccCardHeaderHtml(names, isSample, metaLine, pin) {
   return `
     <div class="cc-header">
       <div>
-        ${isSample ? '<span class="cc-sample-badge">SAMPLE</span> ' : ''}<span class="cc-teams">${escapeHtml(names.A)} vs ${escapeHtml(names.B)}</span>
+        ${isSample ? '<span class="cc-sample-badge">SAMPLE</span> ' : ''}<span class="cc-teams">${teamNameHtml(names.A, settings.TeamAColor)} vs ${teamNameHtml(names.B, settings.TeamBColor)}</span>
         <div class="cc-meta">${metaLine}</div>
       </div>
       ${pin ? `<div class="cc-pin">PIN ${escapeHtml(pin)}</div>` : ''}
@@ -1338,12 +1345,12 @@ function scorecardCardHtmlDay1Compact(row, rosterList, isSample) {
     const p = rosterList.find((r) => r.Name === name);
     return p && p.Tee ? `${escapeHtml(name)} <span class="sc-tee">(${escapeHtml(p.Tee)})</span>` : escapeHtml(name);
   };
-  const teamRowHtml = (teamName, p1, p2, startHole, endHole) => {
+  const teamRowHtml = (teamName, color, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? `<br><span class="sc-players">${nameWithTee(p1)} + ${nameWithTee(p2)}</span>` : '';
-    return `<tr><td class="cc-name">${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
+    return `<tr><td class="cc-name">${teamNameHtml(teamName, color)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
   };
-  const frontRows = teamRowHtml(names.A, row.TeamA_P1, row.TeamA_P2, 1, 9) + ccTieRowHtml('Tie') + teamRowHtml(names.B, row.TeamB_P1, row.TeamB_P2, 1, 9);
-  const backRows = teamRowHtml(names.A, row.TeamA_P1, row.TeamA_P2, 10, 18) + ccTieRowHtml('Tie') + teamRowHtml(names.B, row.TeamB_P1, row.TeamB_P2, 10, 18);
+  const frontRows = teamRowHtml(names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2, 1, 9) + ccTieRowHtml('Tie') + teamRowHtml(names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2, 1, 9);
+  const backRows = teamRowHtml(names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2, 10, 18) + ccTieRowHtml('Tie') + teamRowHtml(names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2, 10, 18);
 
   const frontSegment = printSegmentHtmlCompact("Front 9: Captain's Choice", instruction, 1, 9, startHoleNum, frontRows);
   const backSegment = printSegmentHtmlCompact('Back 9: Modified Alternate Shot', instruction, 10, 18, startHoleNum, backRows);
@@ -1381,18 +1388,18 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
     const teeHtml = parenBits ? ` <span class="sc-tee">(${escapeHtml(parenBits)})</span>` : '';
     return `${escapeHtml(name)}${teeHtml}`;
   };
-  const bestBallRowHtml = (teamName, p1, p2, startHole, endHole) => {
+  const bestBallRowHtml = (teamName, color, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? `<br><span class="sc-players">${playerLabelWithStrokes(p1)} + ${playerLabelWithStrokes(p2)}</span>` : '';
-    return `<tr><td class="cc-name">${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
+    return `<tr><td class="cc-name">${teamNameHtml(teamName, color)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
   };
-  const matchPlayRowHtml = (name, teamName, startHole, endHole) => {
-    return `<tr><td class="cc-name">${playerLabelWithStrokes(name)} <span class="sc-players">&mdash; ${escapeHtml(teamName)}</span></td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(lastName(name))}</td></tr>`;
+  const matchPlayRowHtml = (name, teamName, color, startHole, endHole) => {
+    return `<tr><td class="cc-name">${playerLabelWithStrokes(name)} <span class="sc-players">&mdash; ${teamNameHtml(teamName, color)}</span></td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(lastName(name))}</td></tr>`;
   };
 
-  const frontRows = bestBallRowHtml(names.A, row.TeamA_P1, row.TeamA_P2, 1, 9) + ccTieRowHtml('Tie') + bestBallRowHtml(names.B, row.TeamB_P1, row.TeamB_P2, 1, 9);
+  const frontRows = bestBallRowHtml(names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2, 1, 9) + ccTieRowHtml('Tie') + bestBallRowHtml(names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2, 1, 9);
   const backRows =
-    matchPlayRowHtml(row.TeamA_P1, names.A, 10, 18) + ccTieRowHtml('Tie') + matchPlayRowHtml(row.TeamB_P1, names.B, 10, 18) +
-    matchPlayRowHtml(row.TeamA_P2, names.A, 10, 18) + ccTieRowHtml('Tie') + matchPlayRowHtml(row.TeamB_P2, names.B, 10, 18);
+    matchPlayRowHtml(row.TeamA_P1, names.A, settings.TeamAColor, 10, 18) + ccTieRowHtml('Tie') + matchPlayRowHtml(row.TeamB_P1, names.B, settings.TeamBColor, 10, 18) +
+    matchPlayRowHtml(row.TeamA_P2, names.A, settings.TeamAColor, 10, 18) + ccTieRowHtml('Tie') + matchPlayRowHtml(row.TeamB_P2, names.B, settings.TeamBColor, 10, 18);
 
   const frontSegment = printSegmentHtmlCompact('Front 9: Best Ball', instruction, 1, 9, startHoleNum, frontRows);
   const backSegment = printSegmentHtmlCompact('Back 9: Individual Match Play', instruction, 10, 18, startHoleNum, backRows);
@@ -1454,7 +1461,7 @@ async function ensurePinsForPrint(day, rows) {
 async function printScorecards() {
   const day = document.getElementById('printDaySelect').value;
   const sel = document.getElementById('printMatchSelect').value;
-  const compact = document.getElementById('printCompactToggle').checked;
+  const compact = !document.getElementById('printDetailedToggle').checked;
   if (!sel) { showStatus('printStatus', false, `No Day ${day} matches set up yet.`); return; }
   const all = (pairings[day] || []).filter(hasPlayers);
   let rows = sel === 'all' ? all : all.filter((r) => String(r.MatchNum) === sel);
@@ -1484,6 +1491,17 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function escapeAttr(str) { return escapeHtml(str); }
+// A small colored circle for a team's chosen branding color, meant to sit
+// right before that team's name wherever it's displayed — kept as a separate
+// helper (rather than baked into names.A/names.B themselves) so the plain
+// team-name strings stay safe to use anywhere, HTML or not.
+function teamDotHtml(color) {
+  const c = escapeAttr(color || '#999999');
+  return `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${c}; border:1px solid rgba(0,0,0,0.35); margin-right:5px; vertical-align:middle; flex-shrink:0;"></span>`;
+}
+function teamNameHtml(name, color) {
+  return `${teamDotHtml(color)}${escapeHtml(name)}`;
+}
 // Roster names are stored "Last, First" — the printed scorecard's per-player
 // W/L/T row labels show just the last name to keep them short.
 function lastName(name) {
