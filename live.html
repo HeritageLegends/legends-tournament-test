@@ -229,7 +229,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-10c';
+const LIVE_VERSION = '2026-09-10e';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -347,6 +347,15 @@ function teamNames() {
 }
 function teamColors() {
   return { A: settings.TeamAColor || '#ADD8E6', B: settings.TeamBColor || '#F08080' };
+}
+// "Team " prefix for a team-level "<name> Wins" pick button — used only for
+// team-vs-team picks (Day 1 both segments, Day 2 Best Ball), never for an
+// Individual Match Play button (those are labeled with a player's own name,
+// not a team name). Whatever a captain names their team next season —
+// singular ("Kusilek Crew") or plural ("Birdie Boys") — "Team <name> Wins"
+// always reads correctly, so there's nothing to fix again year to year.
+function teamWinLabel(name) {
+  return `Team ${name}`;
 }
 // A small colored circle for a team's chosen branding color, meant to sit
 // right before that team's name wherever it's displayed — kept separate from
@@ -805,16 +814,20 @@ function renderMatchWinnerMode(day, matchNum) {
   let blocksHtml;
   if (day === '2') {
     blocksHtml =
-      matchWinnerBlockHtml('BestBallWinner', 1, 9, 'Front 9: Best Ball', names.A, names.B, colors.A, colors.B) +
+      matchWinnerBlockHtml('BestBallWinner', 1, 9, 'Front 9: Best Ball', teamWinLabel(names.A), teamWinLabel(names.B), colors.A, colors.B) +
       matchWinnerBlockHtml('MP1Winner', 10, 18, `Back 9: Match Play — ${lastNameOrUnassigned(pairingRow.MP1_TeamA)} vs ${lastNameOrUnassigned(pairingRow.MP1_TeamB)}`, lastNameOrUnassigned(pairingRow.MP1_TeamA), lastNameOrUnassigned(pairingRow.MP1_TeamB), colors.A, colors.B) +
       matchWinnerBlockHtml('MP2Winner', 10, 18, `Back 9: Match Play — ${lastNameOrUnassigned(pairingRow.MP2_TeamA)} vs ${lastNameOrUnassigned(pairingRow.MP2_TeamB)}`, lastNameOrUnassigned(pairingRow.MP2_TeamA), lastNameOrUnassigned(pairingRow.MP2_TeamB), colors.A, colors.B);
   } else {
     blocksHtml =
-      matchWinnerBlockHtml('Winner', 1, 9, "Front 9: Captain's Choice", names.A, names.B, colors.A, colors.B) +
-      matchWinnerBlockHtml('Winner', 10, 18, 'Back 9: Modified Alternate Shot', names.A, names.B, colors.A, colors.B);
+      matchWinnerBlockHtml('Winner', 1, 9, "Front 9: Captain's Choice", teamWinLabel(names.A), teamWinLabel(names.B), colors.A, colors.B) +
+      matchWinnerBlockHtml('Winner', 10, 18, 'Back 9: Modified Alternate Shot', teamWinLabel(names.A), teamWinLabel(names.B), colors.A, colors.B);
   }
+  // Shown for context even though this mode never navigates hole by hole —
+  // matches the same line in Hole-by-Hole mode (see renderHoleByHole).
+  const startHoleText = pairingRow && pairingRow.StartHole ? escapeHtml(String(pairingRow.StartHole)) : null;
   wrap.innerHTML = `
     <p class="sc-intro-label">3. Pick each 9's overall winner below.</p>
+    ${startHoleText ? `<p class="hint" style="font-weight:600; margin:0 0 4px;">Your match is starting on Hole ${startHoleText}.</p>` : ''}
     <p class="hint" style="margin:0 0 8px;">No need to enter every hole — saves immediately when you tap a pick.</p>
     ${blocksHtml}
   `;
@@ -871,13 +884,13 @@ function renderHoleByHole(day, matchNum) {
   let blocksHtml;
   if (day === '2') {
     if (h <= 9) {
-      blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, names.A, names.B, saveBtnHtml, colors.A, colors.B);
+      blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, teamWinLabel(names.A), teamWinLabel(names.B), saveBtnHtml, colors.A, colors.B);
     } else {
       blocksHtml = matchupWinnerBlockHtml('MP1Winner', holeRow, h, pairingRow.MP1_TeamA, pairingRow.MP1_TeamB, null, colors.A, colors.B)
         + matchupWinnerBlockHtml('MP2Winner', holeRow, h, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB, saveBtnHtml, colors.A, colors.B);
     }
   } else {
-    blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, names.A, names.B, saveBtnHtml, colors.A, colors.B);
+    blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, teamWinLabel(names.A), teamWinLabel(names.B), saveBtnHtml, colors.A, colors.B);
   }
 
   // A mirror of this one match's Scoreboard → All Match Scorecards entry,
