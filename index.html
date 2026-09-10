@@ -164,6 +164,20 @@
         <div id="dayLockStatus" class="status"></div>
       </div>
 
+      <div class="card" style="border: 1px solid #b8860b;">
+        <h2 style="color:#b8860b;">Testing Mode: Suspend PIN Requirement</h2>
+        <p class="hint">Turn this on temporarily while the guys are testing the app so anyone can enter scores for
+          any match on Live Scoring without needing a PIN — handy for a dry run before real Scorekeeper PINs
+          matter. It doesn't clear or change any match's saved PIN; it just stops Live Scoring from asking for one
+          while this is on. Turn it back off before the tournament and every match goes back to needing its own
+          PIN (or the Admin PIN) exactly as before.</p>
+        <div class="field-row" style="align-items:center; gap:12px;">
+          <strong>Status:</strong> <span id="suspendPinsLabel" class="hint">Off — PINs required as normal</span>
+          <button class="secondary" id="suspendPinsBtn" onclick="toggleSuspendPins()">Suspend PINs</button>
+        </div>
+        <div id="suspendPinsStatus" class="status"></div>
+      </div>
+
       <div class="card" style="border: 1px solid #c0392b;">
         <h2 style="color:#c0392b;">Start New Season</h2>
         <p class="hint">Once this year's tournament is over and you're ready to set up next year's: this archives everything from this season (settings, roster, pairings, scores) into hidden backup tabs in the Google Sheet, then clears pairings and scores and resets every player's team back to unassigned so you can start fresh. Player names, handicaps and tees stay as they are — no need to re-enter the roster. The Hole Handicaps table also stays as-is (only re-enter it if you're changing courses).</p>
@@ -307,7 +321,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-10';
+const ADMIN_VERSION = '2026-09-10b';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -493,6 +507,7 @@ function populateSettingsForm() {
   document.getElementById('s_AdminPIN').value = settings.AdminPIN || '';
   document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament';
   updateDayLockUI();
+  updateSuspendPinsUI();
   refreshPairingHeaders();
 }
 
@@ -526,6 +541,37 @@ async function toggleDayLock(day) {
     }
   } catch (err) {
     showStatus('dayLockStatus', false, 'Network error: ' + err.message);
+  }
+}
+
+// Mirrors the SuspendScorePins check in live.html's matchIsUnlocked.
+function suspendPinsOn() {
+  const v = settings.SuspendScorePins;
+  return v === true || v === 'TRUE' || v === 'true';
+}
+function updateSuspendPinsUI() {
+  const on = suspendPinsOn();
+  const label = document.getElementById('suspendPinsLabel');
+  label.textContent = on ? 'ON — anyone can enter scores for any match, no PIN needed' : 'Off — PINs required as normal';
+  label.style.color = on ? '#b8860b' : '';
+  label.style.fontWeight = on ? '700' : '400';
+  document.getElementById('suspendPinsBtn').textContent = on ? 'Require PINs Again' : 'Suspend PINs';
+}
+async function toggleSuspendPins() {
+  const newValue = suspendPinsOn() ? 'FALSE' : 'TRUE';
+  try {
+    const res = await apiPost('saveSettings', { settings: JSON.stringify({ SuspendScorePins: newValue }) });
+    if (res.success) {
+      settings = res.data;
+      updateSuspendPinsUI();
+      showStatus('suspendPinsStatus', true, newValue === 'TRUE'
+        ? 'PIN requirement suspended — Live Scoring will let anyone enter any match’s scores until you turn this back off.'
+        : 'PINs required again — every match is back to needing its own PIN (or the Admin PIN), same as before.');
+    } else {
+      showStatus('suspendPinsStatus', false, res.error);
+    }
+  } catch (err) {
+    showStatus('suspendPinsStatus', false, 'Network error: ' + err.message);
   }
 }
 
@@ -707,11 +753,31 @@ function rosterNamesForTeam(team) {
 // ====================== PAIRINGS (shared logic for Day 1 & 2) ======================
 let pairings = { 1: [], 2: [] };
 
-function playerSelect(selectedName, team, dataAttrs) {
-  const names = rosterNamesForTeam(team);
+// usedElsewhere is the set of names already picked in some OTHER slot for
+// this same day (see usedNamesInDay below) — filtered out here so the same
+// player can't accidentally end up in two matches at once. The name already
+// sitting in THIS slot is never in that set (usedNamesInDay excludes the
+// slot it's building for), so it always stays selectable for itself.
+function playerSelect(selectedName, team, dataAttrs, usedElsewhere) {
+  const used = usedElsewhere || new Set();
+  const names = rosterNamesForTeam(team).filter((n) => n === selectedName || !used.has(n));
   const opts = ['<option value="">— select —</option>']
     .concat(names.map((n) => `<option value="${escapeAttr(n)}" ${n === selectedName ? 'selected' : ''}>${escapeHtml(n)}</option>`));
   return `<select ${dataAttrs}>${opts.join('')}</select>`;
+}
+
+// Every player already assigned to any of that day's matches (either team,
+// any of the 4 slots), except whichever one slot is currently being built —
+// so that dropdown doesn't lose its own current selection.
+function usedNamesInDay(day, exceptIdx, exceptField) {
+  const used = new Set();
+  (pairings[day] || []).forEach((row, i) => {
+    ['TeamA_P1', 'TeamA_P2', 'TeamB_P1', 'TeamB_P2'].forEach((f) => {
+      if (i === exceptIdx && f === exceptField) return;
+      if (row[f]) used.add(row[f]);
+    });
+  });
+  return used;
 }
 
 async function loadPairings(day) {
@@ -763,10 +829,10 @@ function pairingRowEl(day, row, idx) {
 
   tr.innerHTML = `
     <td class="match-label">Match ${row.MatchNum}</td>
-    <td>${playerSelect(row.TeamA_P1, 'A', `${base} data-field="TeamA_P1"`)}</td>
-    <td>${playerSelect(row.TeamA_P2, 'A', `${base} data-field="TeamA_P2"`)}</td>
-    <td>${playerSelect(row.TeamB_P1, 'B', `${base} data-field="TeamB_P1"`)}</td>
-    <td>${playerSelect(row.TeamB_P2, 'B', `${base} data-field="TeamB_P2"`)}</td>
+    <td>${playerSelect(row.TeamA_P1, 'A', `${base} data-field="TeamA_P1"`, usedNamesInDay(day, idx, 'TeamA_P1'))}</td>
+    <td>${playerSelect(row.TeamA_P2, 'A', `${base} data-field="TeamA_P2"`, usedNamesInDay(day, idx, 'TeamA_P2'))}</td>
+    <td>${playerSelect(row.TeamB_P1, 'B', `${base} data-field="TeamB_P1"`, usedNamesInDay(day, idx, 'TeamB_P1'))}</td>
+    <td>${playerSelect(row.TeamB_P2, 'B', `${base} data-field="TeamB_P2"`, usedNamesInDay(day, idx, 'TeamB_P2'))}</td>
     <td><input type="text" value="${escapeAttr(row.StartHole || '')}" ${base} data-field="StartHole" placeholder="e.g. 18a" style="width:70px;"></td>
     <td>
       <input type="text" value="${escapeAttr(row.PIN || '')}" ${base} data-field="PIN" maxlength="8" placeholder="open" style="width:70px;">
@@ -777,10 +843,12 @@ function pairingRowEl(day, row, idx) {
     if (!el.dataset.field) return;
     el.addEventListener('change', (e) => {
       pairings[day][idx][e.target.dataset.field] = e.target.value;
-      if (isDay2 && ['TeamA_P1', 'TeamA_P2', 'TeamB_P1', 'TeamB_P2'].includes(e.target.dataset.field)) {
+      if (['TeamA_P1', 'TeamA_P2', 'TeamB_P1', 'TeamB_P2'].includes(e.target.dataset.field)) {
         // keep the match-play pairing in sync with the foursome unless the admin swapped it
-        syncMatchPlayPairing(pairings[day][idx]);
-        renderPairings(day); // refresh the "vs" line below the row
+        if (isDay2) syncMatchPlayPairing(pairings[day][idx]);
+        // full re-render so every OTHER row's dropdown stops offering whoever
+        // was just picked here (see usedNamesInDay) — and Day 2's "vs" line updates
+        renderPairings(day);
       }
     });
   });

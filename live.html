@@ -449,7 +449,13 @@ function getAdminUnlocked() {
 function setAdminUnlocked(v) {
   try { v ? localStorage.setItem(adminUnlockKey(), '1') : localStorage.removeItem(adminUnlockKey()); } catch (e) {}
 }
+// Mirrors suspendPinsOn() in index.html.
+function suspendPinsOn() {
+  const v = settings && settings.SuspendScorePins;
+  return v === true || v === 'TRUE' || v === 'true';
+}
 function matchIsUnlocked(day, matchNum, pairingRow) {
+  if (suspendPinsOn()) return true; // testing mode — Settings → Suspend PIN Requirement
   if (getAdminUnlocked()) return true;
   // String(...) first: a PIN that's all digits (e.g. "0483") can come back from
   // the Sheet as an actual number rather than text, and a number has no
@@ -554,11 +560,18 @@ function renderScoringUI(day, matchNum) {
     `;
     return;
   }
-  toggleEl.innerHTML = getAdminUnlocked()
-    ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="exitAdminMode('${day}', '${matchNum}')">Exit Admin Mode</button>`
-    : (pairingRow && pairingRow.PIN
-        ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Forget PIN</button>`
-        : '');
+  if (suspendPinsOn()) {
+    // No PIN gate is actually active right now, so there's nothing to "Forget"
+    // or "Exit" — just say so, rather than showing a button that wouldn't do
+    // anything meaningful while this is on.
+    toggleEl.innerHTML = '<span class="hint" style="margin-left:auto; color:#b8860b; font-weight:600;">Testing mode: PIN requirement is suspended for every match</span>';
+  } else {
+    toggleEl.innerHTML = getAdminUnlocked()
+      ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="exitAdminMode('${day}', '${matchNum}')">Exit Admin Mode</button>`
+      : (pairingRow && pairingRow.PIN
+          ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Forget PIN</button>`
+          : '');
+  }
   renderHoleByHole(day, matchNum);
 }
 
