@@ -35,6 +35,7 @@
   .save-indicator.saved { color: var(--ok); }
   .save-indicator.error { color: var(--error); }
   .hint { font-size: 0.8rem; color: var(--muted); }
+  .sc-intro-label { font-weight: 700; color: var(--green-dark); font-size: 0.95rem; margin: 10px 0 4px; width: 100%; }
   [hidden] { display: none !important; }
   button.primary { background: var(--green); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 600; }
   button.secondary { background: #fff; color: var(--green); border: 1px solid var(--green); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
@@ -130,9 +131,15 @@
   .wpick-sides { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .wpick-side { font-weight: 600; flex: 1; }
   .wpick-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* Team (A/B) pick buttons always show their team's own color as their
+     background (set inline per-button, since the color is per-tournament —
+     see winnerButtonsHtml), not just when picked, so the two sides are easy
+     to tell apart at a glance even before tapping anything. A picked button
+     is marked instead with a bold dark border plus a leading checkmark in
+     its own label text — a color change alone wouldn't show, since the
+     color's already there either way. */
   .wpick-btn { flex: 1 1 90px; padding: 14px 6px; font-size: 1rem; font-weight: 700; border-radius: 8px; border: 1.5px solid var(--border); background: #fff; cursor: pointer; }
-  .wpick-btn.active.wpick-a { background: var(--win); border-color: var(--green); color: var(--green-dark); }
-  .wpick-btn.active.wpick-b { background: var(--lose); border-color: var(--error); color: var(--error); }
+  .wpick-btn.active { border: 3px solid #1a1a1a; }
   .wpick-btn.active.wpick-half { background: var(--half); border-color: var(--gold); color: #7a5b00; }
 
   /* ---- Concede-or-continue banner — shown the moment a segment becomes
@@ -169,6 +176,7 @@
   <section id="tab-scoring" class="tab-panel">
     <div class="card">
       <h2>Enter Scores</h2>
+      <p class="sc-intro-label">Pick the day and your match from the drop-down window below.</p>
       <div class="row">
         <select id="scDay"><option value="1">Day 1</option><option value="2">Day 2</option></select>
         <select id="scMatch"></select>
@@ -221,7 +229,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-10';
+const LIVE_VERSION = '2026-09-10b';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -662,12 +670,18 @@ function playerStrokeNoteHtml(name, hole) {
 }
 // Button text: the Tie button just says "Tie"; each side's own button says
 // "<name> Wins" so the row is self-explanatory without a separate label line
-// above it.
+// above it. Each side's own button is always shaded with that team's own
+// color (not just once picked) — easier to tell the two sides apart at a
+// glance for anyone who isn't used to the app; the button that's actually
+// picked is marked with a bold border and a leading checkmark instead, since
+// a color change alone wouldn't be visible against a background that's
+// already colored either way.
 function winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor) {
   const btn = (v, rawLabel, cls, color) => {
-    const label = v === 'Half' ? rawLabel : `${rawLabel} Wins`;
-    const dot = color ? teamDotHtml(color) : '';
-    return `<button type="button" class="wpick-btn ${val === v ? 'active ' + cls : ''}" data-wfield="${field}" data-wval="${v}">${dot}${escapeHtml(label)}</button>`;
+    const isActive = val === v;
+    const label = (isActive ? '✓ ' : '') + (v === 'Half' ? rawLabel : `${rawLabel} Wins`);
+    const style = color ? ` style="background:${escapeHtml(color)};"` : '';
+    return `<button type="button" class="wpick-btn ${isActive ? 'active ' + cls : ''}" data-wfield="${field}" data-wval="${v}"${style}>${escapeHtml(label)}</button>`;
   };
   return `<div class="wpick-row">${btn('A', aLabel, 'wpick-a', aColor)}${btn('Half', 'Tie', 'wpick-half')}${btn('B', bLabel, 'wpick-b', bColor)}${extraBtnHtml || ''}</div>`;
 }
@@ -715,6 +729,7 @@ function renderCurrentEntryView(day, matchNum) {
 }
 function scModeToggleHtml() {
   return `
+    <p class="sc-intro-label">Choose whether you want to enter hole-by-hole scores or just the match winner.</p>
     <button type="button" class="view-toggle-btn ${scEntryMode === 'holebyhole' ? 'active' : ''}" onclick="setScEntryMode('holebyhole')">Hole-by-Hole</button>
     <button type="button" class="view-toggle-btn ${scEntryMode === 'matchwinner' ? 'active' : ''}" onclick="setScEntryMode('matchwinner')">Enter Match Winner</button>
   `;

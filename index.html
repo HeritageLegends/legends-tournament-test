@@ -324,7 +324,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-10c';
+const ADMIN_VERSION = '2026-09-10d';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -1153,10 +1153,10 @@ function scorecardCardHtml(row, rosterList, isSample) {
 
   const bestBallRowHtml = (teamName, color, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? `<br><span class="sc-players">${playerLabelWithStrokes(p1)} + ${playerLabelWithStrokes(p2)}</span>` : '';
-    return `<tr><td class="sc-name">${teamNameHtml(teamName, color)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
+    return `<tr><td class="sc-name"${teamCellStyleAttr(color)}>${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
   };
   const matchPlayRowHtml = (name, teamName, color, startHole, endHole) => {
-    return `<tr><td class="sc-name">${playerLabelWithStrokes(name)} <span class="sc-players">&mdash; ${teamNameHtml(teamName, color)}</span></td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
+    return `<tr><td class="sc-name"${teamCellStyleAttr(color)}>${playerLabelWithStrokes(name)} <span class="sc-players">&mdash; ${escapeHtml(teamName)}</span></td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
   };
 
   const frontRows = [[names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2], [names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2]]
@@ -1202,7 +1202,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
   };
   const teamRowHtml = (teamName, color, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? `<br><span class="sc-players">${nameWithTee(p1)} + ${nameWithTee(p2)}</span>` : '';
-    return `<tr><td class="sc-name">${teamNameHtml(teamName, color)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
+    return `<tr><td class="sc-name"${teamCellStyleAttr(color)}>${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}</tr>`;
   };
   const frontRows = [[names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2], [names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2]]
     .map(([teamName, color, p1, p2]) => teamRowHtml(teamName, color, p1, p2, 1, 9)).join('');
@@ -1347,7 +1347,7 @@ function scorecardCardHtmlDay1Compact(row, rosterList, isSample) {
   };
   const teamRowHtml = (teamName, color, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? `<br><span class="sc-players">${nameWithTee(p1)} + ${nameWithTee(p2)}</span>` : '';
-    return `<tr><td class="cc-name">${teamNameHtml(teamName, color)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
+    return `<tr><td class="cc-name"${teamCellStyleAttr(color)}>${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
   };
   const frontRows = teamRowHtml(names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2, 1, 9) + ccTieRowHtml('Tie') + teamRowHtml(names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2, 1, 9);
   const backRows = teamRowHtml(names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2, 10, 18) + ccTieRowHtml('Tie') + teamRowHtml(names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2, 10, 18);
@@ -1390,10 +1390,10 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
   };
   const bestBallRowHtml = (teamName, color, p1, p2, startHole, endHole) => {
     const playersHtml = (p1 || p2) ? `<br><span class="sc-players">${playerLabelWithStrokes(p1)} + ${playerLabelWithStrokes(p2)}</span>` : '';
-    return `<tr><td class="cc-name">${teamNameHtml(teamName, color)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
+    return `<tr><td class="cc-name"${teamCellStyleAttr(color)}>${escapeHtml(teamName)}${playersHtml}</td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
   };
   const matchPlayRowHtml = (name, teamName, color, startHole, endHole) => {
-    return `<tr><td class="cc-name">${playerLabelWithStrokes(name)} <span class="sc-players">&mdash; ${teamNameHtml(teamName, color)}</span></td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(lastName(name))}</td></tr>`;
+    return `<tr><td class="cc-name"${teamCellStyleAttr(color)}>${playerLabelWithStrokes(name)} <span class="sc-players">&mdash; ${escapeHtml(teamName)}</span></td>${blankWtCellsHtml(startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(lastName(name))}</td></tr>`;
   };
 
   const frontRows = bestBallRowHtml(names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2, 1, 9) + ccTieRowHtml('Tie') + bestBallRowHtml(names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2, 1, 9);
@@ -1491,16 +1491,21 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function escapeAttr(str) { return escapeHtml(str); }
-// A small colored circle for a team's chosen branding color, meant to sit
-// right before that team's name wherever it's displayed — kept as a separate
-// helper (rather than baked into names.A/names.B themselves) so the plain
-// team-name strings stay safe to use anywhere, HTML or not.
-function teamDotHtml(color) {
-  const c = escapeAttr(color || '#999999');
-  return `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${c}; border:1px solid rgba(0,0,0,0.35); margin-right:5px; vertical-align:middle; flex-shrink:0;"></span>`;
-}
+// A team's name shown as a small shaded "pill" in their chosen branding
+// color — used for inline mentions (e.g. the "Team A vs Team B" title line)
+// where shading the whole surrounding box doesn't make sense. For a table
+// cell that's entirely that team's own row, shade the cell itself instead
+// (see teamCellStyleAttr) — a full-cell band reads more clearly on a
+// printed page than a small dot ever did.
 function teamNameHtml(name, color) {
-  return `${teamDotHtml(color)}${escapeHtml(name)}`;
+  const c = escapeAttr(color || '#999999');
+  return `<span style="background:${c}; padding:1px 7px; border-radius:4px; display:inline-block;">${escapeHtml(name)}</span>`;
+}
+// A `style="..."` attribute (including the attribute name) that shades a
+// table cell's whole background with a team's color — pass straight into a
+// <td ...${teamCellStyleAttr(color)}>.
+function teamCellStyleAttr(color) {
+  return ` style="background:${escapeAttr(color || '#eee')};"`;
 }
 // Roster names are stored "Last, First" — the printed scorecard's per-player
 // W/L/T row labels show just the last name to keep them short.
