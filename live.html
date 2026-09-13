@@ -10,6 +10,10 @@
     --bg: #f5f5f0; --card: #ffffff; --border: #d8d8d0;
     --text: #222; --muted: #777; --error: #b3261e; --ok: #1e5b3a;
     --win: #e6f4ea; --lose: #fdecea; --half: #f5f0e0;
+    /* Overwritten from Settings once loaded (see applyTeamColorVars) — these
+       defaults just match teamColors()'s own JS fallback, for the instant
+       before that runs. */
+    --team-a-color: #ADD8E6; --team-b-color: #F08080;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: var(--bg); color: var(--text); }
@@ -26,8 +30,8 @@
   .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
   .status-line { font-size: 0.9rem; margin: 4px 0; }
   .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
-  .status-badge.a { background: var(--win); color: var(--green-dark); }
-  .status-badge.b { background: var(--lose); color: var(--error); }
+  .status-badge.a { background: var(--win); color: #222; }
+  .status-badge.b { background: var(--lose); color: #222; }
   .status-badge.half { background: var(--half); color: #7a5b00; }
   .status-badge.pending { background: #eee; color: var(--muted); }
   .save-indicator { font-size: 0.85rem; margin-left: 12px; }
@@ -36,6 +40,10 @@
   .save-indicator.error { color: var(--error); }
   .hint { font-size: 0.8rem; color: var(--muted); }
   .sc-intro-label { font-weight: 700; color: var(--green-dark); font-size: 0.95rem; margin: 10px 0 4px; width: 100%; }
+  /* The actual hole number/letter in "Your match is starting on Hole 14a" —
+     boxed and enlarged so it's the one thing that jumps out of that line,
+     since it's the answer to "which hole do I go stand on." */
+  .start-hole-badge { display: inline-block; font-size: 1.3rem; font-weight: 800; color: var(--green-dark); background: #e8f2ec; border: 1.5px solid var(--green); border-radius: 8px; padding: 2px 12px; margin-left: 4px; vertical-align: middle; }
   [hidden] { display: none !important; }
   button.primary { background: var(--green); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 600; }
   button.secondary { background: #fff; color: var(--green); border: 1px solid var(--green); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
@@ -88,17 +96,23 @@
   td.lbx-pts { width: 60px; vertical-align: top; font-variant-numeric: tabular-nums; }
   .lbx-pts-seg { font-size: 0.78rem; font-weight: 400; margin: 2px 0; color: var(--muted); }
   .lbx-pts-total { font-weight: 700; font-size: 1rem; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
-  td.lbx-final-lead .lbx-pts-seg { color: rgba(255, 255, 255, 0.85); }
-  td.lbx-final-lead .lbx-pts-total { border-top-color: rgba(255, 255, 255, 0.45); }
+  td.lbx-final-lead-a .lbx-pts-seg, td.lbx-final-lead-b .lbx-pts-seg { color: rgba(0, 0, 0, 0.6); }
+  td.lbx-final-lead-a .lbx-pts-total, td.lbx-final-lead-b .lbx-pts-total { border-top-color: rgba(0, 0, 0, 0.25); }
   .lbx-names { font-weight: 600; color: var(--green-dark); }
   .lbx-matchnum { font-size: 0.72rem; color: var(--muted); }
   .lbx-match { min-width: 200px; }
   .lbx-seg { font-size: 0.78rem; margin: 2px 0; text-align: left; }
   .lbx-seg-label { color: var(--muted); }
   .lbx-unset { text-align: center; color: var(--muted); font-style: italic; padding: 10px; }
-  td.lbx-lead { background: #fbeceb; }
-  td.lbx-final-lead { background: var(--error); color: #fff; }
-  td.lbx-final-lead .lbx-names { color: #fff; }
+  /* Who's leading (or has won) a match is shown in THAT team's own color —
+     --team-a-color/--team-b-color are set from Settings once at load (see
+     applyTeamColorVars) — a light tint while still in progress, a solid
+     fill once the match is final. Not a fixed red/green for either side. */
+  td.lbx-lead-a { background: color-mix(in srgb, var(--team-a-color) 35%, white); }
+  td.lbx-lead-b { background: color-mix(in srgb, var(--team-b-color) 35%, white); }
+  td.lbx-final-lead-a { background: var(--team-a-color); color: #222; }
+  td.lbx-final-lead-b { background: var(--team-b-color); color: #222; }
+  td.lbx-final-lead-a .lbx-names, td.lbx-final-lead-b .lbx-names { color: #222; }
   td.lbx-tied { background: #eee; }
   tr.lbx-total td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
   tr.lbx-total td.lbx-pair-h { text-align: left; }
@@ -110,9 +124,11 @@
   table.indiv-table th, table.indiv-table td { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); }
   td.indiv-name { text-align: left; font-weight: 600; }
   td.indiv-total, tr.indiv-col-row th:last-child { font-weight: 700; }
-  tr.indiv-team-row th { background: var(--green-dark); color: #fff; font-size: 1rem; text-align: left; padding: 8px 10px; border-bottom: none; }
+  /* Background is set inline per table (see individualTableHtml) to that
+     team's own configured color, not a fixed color shared by both teams. */
+  tr.indiv-team-row th { color: #222; font-size: 1rem; text-align: left; padding: 8px 10px; border-bottom: none; }
   tr.indiv-daygroup-row th { background: #eef4ee; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em; border-bottom: none; }
-  tr.indiv-total-row td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
+  tr.indiv-total-row td { font-weight: 700; color: #222; border-bottom: none; }
   tr.indiv-total-row td:first-child { text-align: left; }
 
   /* ---- Match Scorecards: Progression (collapsed) ---- */
@@ -124,8 +140,8 @@
   .prog-seg-label { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
   .prog-strip { display: flex; gap: 3px; overflow-x: auto; }
   .prog-chip { position: relative; flex-shrink: 0; width: 40px; text-align: center; border-radius: 6px; padding: 3px 2px; font-size: 0.72rem; }
-  .prog-chip.prog-a { background: var(--win); color: var(--green-dark); }
-  .prog-chip.prog-b { background: var(--lose); color: var(--error); }
+  .prog-chip.prog-a { background: var(--win); color: #222; }
+  .prog-chip.prog-b { background: var(--lose); color: #222; }
   .prog-chip.prog-half { background: var(--half); color: #7a5b00; }
   .prog-chip.prog-pending { background: #eee; color: var(--muted); }
   .prog-hole { font-size: 0.62rem; opacity: 0.7; }
@@ -164,6 +180,14 @@
   /* Small badge marking a hole filled in by a concession rather than actually
      played out — distinct from the tie badge above. */
   .prog-conceded { position: absolute; top: -6px; right: -4px; width: 15px; height: 15px; border-radius: 50%; background: var(--muted); color: #fff; border: 1.5px solid #fff; font-size: 0.6rem; font-weight: 800; line-height: 12px; }
+  /* Shown once every segment of a match has no holes left blank — final
+     result plus a button to move on to the Scoreboard. Green (not the
+     concede banner's amber) since this is a completed, not a pending,
+     state. */
+  .final-results-banner { background: #e8f2ec; border: 2px solid var(--green); border-radius: 10px; padding: 14px; margin: 10px 0 14px; text-align: center; }
+  .final-results-title { font-weight: 800; color: var(--green-dark); font-size: 1.05rem; margin-bottom: 4px; }
+  .final-results-score { font-size: 1.15rem; font-weight: 700; color: var(--green-dark); margin-bottom: 12px; }
+  .final-results-banner .primary { width: 100%; padding: 14px 10px; font-size: 0.95rem; }
   /* First-thing-you-see gate: are you keeping score, or just here to watch?
      Covers the whole page (rather than living inside a tab) so it's the very
      first thing anyone opening this link sees, before either tab is usable. */
@@ -371,7 +395,7 @@ async function loadShared() {
   const [sRes, rRes, hRes, hRedRes, p1Res, p2Res] = await Promise.all([
     apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getHoleHandicapsRed'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }),
   ]);
-  if (sRes.success) { settings = sRes.data; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; }
+  if (sRes.success) { settings = sRes.data; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; applyTeamColorVars(); }
   if (rRes.success) { roster = rRes.data; indexRoster(); }
   if (hRes.success) {
     holeHC.default = {};
@@ -390,6 +414,16 @@ function teamNames() {
 }
 function teamColors() {
   return { A: settings.TeamAColor || '#ADD8E6', B: settings.TeamBColor || '#F08080' };
+}
+// Mirrors teamColors() into CSS custom properties so plain CSS rules (the
+// leaderboard's lead/final-lead highlighting, which needs nested-selector
+// text-color overrides that inline styles can't reach) can use the actual
+// configured team colors too, not just the HTML this file builds directly.
+// Called once settings load, and again any time settings are reloaded.
+function applyTeamColorVars() {
+  const colors = teamColors();
+  document.documentElement.style.setProperty('--team-a-color', colors.A);
+  document.documentElement.style.setProperty('--team-b-color', colors.B);
 }
 // "Team " prefix for a team-level "<name> Wins" pick button — used only for
 // team-vs-team picks (Day 1 both segments, Day 2 Best Ball), never for an
@@ -490,6 +524,49 @@ let lastSavedHolesByMatch = {};
 // than anything persisted — it only needs to survive re-renders of the
 // current match, not reloads.
 let concedeBannerFor = null;
+// Matches whose "Accept Results and go to Scoreboard" banner (below) has
+// been dismissed by tapping that button — keyed 'day_matchNum'. Plain
+// in-memory state, not persisted: a fresh page load shows the banner again
+// for any match that's still complete, which is fine (there's nothing left
+// to accidentally re-enter once every hole is final).
+let acceptedMatches = new Set();
+// True once every segment of this match has no holes left blank — a played-
+// out or conceded result either way (see buildSegmentResult's `final`).
+// Shared by the "Accept Results" banner in both Hole-by-Hole and Enter Match
+// Winner mode, so "the match is done" means exactly the same thing in both.
+function matchIsComplete(day, pairingRow, holes) {
+  if (!pairingRow) return false;
+  const { segs } = segmentInfoFromHoles(day, pairingRow, holes);
+  return segs.length > 0 && segs.every((s) => s.final);
+}
+function acceptResultsBannerHtml(day, matchNum, pairingRow, holes) {
+  if (acceptedMatches.has(day + '_' + matchNum)) return '';
+  if (!matchIsComplete(day, pairingRow, holes)) return '';
+  const { segs } = segmentInfoFromHoles(day, pairingRow, holes);
+  const names = teamNames();
+  let ptsA = 0, ptsB = 0;
+  segs.forEach((s) => { ptsA += s.points.A; ptsB += s.points.B; });
+  const resultText = ptsA > ptsB
+    ? `${escapeHtml(names.A)} wins, ${formatPts(ptsA)}–${formatPts(ptsB)}`
+    : ptsB > ptsA
+      ? `${escapeHtml(names.B)} wins, ${formatPts(ptsB)}–${formatPts(ptsA)}`
+      : `Match tied, ${formatPts(ptsA)}–${formatPts(ptsB)}`;
+  return `
+    <div class="final-results-banner">
+      <div class="final-results-title">Match ${escapeHtml(String(matchNum))} complete</div>
+      <div class="final-results-score">${resultText}</div>
+      <button type="button" class="primary" onclick="acceptMatchResults('${day}', '${matchNum}')">Accept Results of Match ${escapeHtml(String(matchNum))} and go to Scoreboard</button>
+    </div>
+  `;
+}
+function acceptMatchResults(day, matchNum) {
+  acceptedMatches.add(day + '_' + matchNum);
+  // Land on this match's own day rather than whatever the Scoreboard's day
+  // dropdown last had — one less tap to see the result that was just entered.
+  const sbDaySel = document.getElementById('sbDay');
+  if (sbDaySel) sbDaySel.value = day;
+  document.querySelector('.tab-btn[data-tab="scoreboard"]').click();
+}
 function cloneHoles(holes) { return JSON.parse(JSON.stringify(holes || [])); }
 function fieldsForDay(day) { return day === '2' ? ['BestBallWinner', 'MP1Winner', 'MP2Winner'] : ['Winner']; }
 // 'empty' — no result entered at all; 'saved' — matches the last confirmed-
@@ -916,8 +993,9 @@ function renderMatchWinnerMode(day, matchNum) {
   const startHoleText = pairingRow && pairingRow.StartHole ? escapeHtml(String(pairingRow.StartHole)) : null;
   wrap.innerHTML = `
     <p class="sc-intro-label">3. Pick each 9's overall winner below.</p>
-    ${startHoleText ? `<p class="hint" style="font-weight:600; margin:0 0 4px;">Your match is starting on Hole ${startHoleText}.</p>` : ''}
+    ${startHoleText ? `<p class="hint" style="font-weight:600; margin:0 0 4px;">Your match is starting on Hole <span class="start-hole-badge">${startHoleText}</span></p>` : ''}
     <p class="hint" style="margin:0 0 8px;">No need to enter every hole — saves immediately when you tap a pick.</p>
+    ${acceptResultsBannerHtml(day, matchNum, pairingRow, currentHoles)}
     ${blocksHtml}
   `;
   wrap.querySelectorAll('.mw-segment-block .wpick-btn').forEach((btn) => {
@@ -1057,7 +1135,7 @@ function renderHoleByHole(day, matchNum) {
 
   wrap.innerHTML = `
     <p class="sc-intro-label">3. Select Winner (or Tie) below and advance to the next hole.</p>
-    ${startHoleText ? `<p class="hint" style="font-weight:600; margin:0 0 8px;">Your match is starting on Hole ${startHoleText}.</p>` : ''}
+    ${startHoleText ? `<p class="hint" style="font-weight:600; margin:0 0 8px;">Your match is starting on Hole <span class="start-hole-badge">${startHoleText}</span></p>` : ''}
     <div class="hbh-nav">
       <button type="button" onclick="stepHole(-1)">‹</button>
       <select id="hbhHoleSelect" onchange="jumpToHole(this.value)">
@@ -1069,6 +1147,7 @@ function renderHoleByHole(day, matchNum) {
     </div>
     ${holeCompletionStripHtml(day, matchNum)}
     ${concedeBannerHtml}
+    ${acceptResultsBannerHtml(day, matchNum, pairingRow, currentHoles)}
     <div class="hbh-seglabel">${escapeHtml(segLabel)}</div>
     ${blocksHtml}
     <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save now and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that. The row of hole numbers above shows what's actually confirmed: grey means nothing's entered yet; once a hole has a winner (or Tie), its number fills with that team's color — a dashed border means it's entered here but not yet confirmed saved, a solid border means it's saved — tap any number to jump to that hole.</p>
@@ -1434,7 +1513,12 @@ function segStatusTextWithName(seg, aName, bName) {
 function segStatusBadgeHtml(seg, aName, bName) {
   const cls = seg.leader === 'A' ? 'a' : seg.leader === 'B' ? 'b' : seg.leader === 'Half' ? 'half' : 'pending';
   const text = segStatusTextWithName(seg, aName, bName);
-  return `<span class="status-badge ${cls}">${escapeHtml(text)}</span>`;
+  // Team A/B badges show that team's own configured color (set in Settings)
+  // instead of a fixed green/red — Half (tie) and pending stay their usual
+  // neutral colors via the CSS classes alone, since neither belongs to a team.
+  const colors = teamColors();
+  const style = cls === 'a' ? ` style="background:${escapeHtml(colors.A)};"` : cls === 'b' ? ` style="background:${escapeHtml(colors.B)};"` : '';
+  return `<span class="status-badge ${cls}"${style}>${escapeHtml(text)}</span>`;
 }
 // One compact badge per segment (e.g. "Captain's Choice: Final — Stewart +
 // Davis 2 up"), stacked in the leaderboard row's middle "Match" column.
@@ -1499,13 +1583,13 @@ async function loadLeaderboardView(day) {
     }
     const { segs, segLabels, segNames, ptsA, ptsB } = matchSegmentInfo(day, row, scoresByMatch);
     totalA += ptsA; totalB += ptsB;
-    // Solid highlight once every segment in the match is final (mirrors the
-    // reference leaderboard's red "won" styling); a lighter tint just shows
-    // who's currently ahead while the match is still in progress.
+    // Solid highlight, in that team's own color, once every segment in the
+    // match is final; a lighter tint of the same color just shows who's
+    // currently ahead while the match is still in progress.
     const allFinal = segs.every((s) => s.final);
     const aAhead = ptsA > ptsB, bAhead = ptsB > ptsA;
-    const leadClassA = aAhead ? (allFinal ? 'lbx-final-lead' : 'lbx-lead') : '';
-    const leadClassB = bAhead ? (allFinal ? 'lbx-final-lead' : 'lbx-lead') : '';
+    const leadClassA = aAhead ? (allFinal ? 'lbx-final-lead-a' : 'lbx-lead-a') : '';
+    const leadClassB = bAhead ? (allFinal ? 'lbx-final-lead-b' : 'lbx-lead-b') : '';
     const tiedClass = (!aAhead && !bAhead && allFinal) ? 'lbx-tied' : '';
     const pairA = `${lastName(row.TeamA_P1)} + ${lastName(row.TeamA_P2)}`;
     const pairB = `${lastName(row.TeamB_P1)} + ${lastName(row.TeamB_P2)}`;
@@ -1582,11 +1666,11 @@ async function loadTournamentTotal() {
   const rowsHtml = formatRows.map(([label, pts]) => {
     const aAhead = pts.A > pts.B, bAhead = pts.B > pts.A;
     return `<tr>
-      <td class="lbx-pts ${aAhead ? 'lbx-lead' : ''}"><span class="lbx-pts-total" style="border-top:none; margin-top:0; padding-top:0;">${formatPts(pts.A)}</span></td>
+      <td class="lbx-pts ${aAhead ? 'lbx-lead-a' : ''}"><span class="lbx-pts-total" style="border-top:none; margin-top:0; padding-top:0;">${formatPts(pts.A)}</span></td>
       <td class="lbx-pair"></td>
       <td class="lbx-match" style="text-align:center; font-weight:600;">${escapeHtml(label)}</td>
       <td class="lbx-pair"></td>
-      <td class="lbx-pts ${bAhead ? 'lbx-lead' : ''}"><span class="lbx-pts-total" style="border-top:none; margin-top:0; padding-top:0;">${formatPts(pts.B)}</span></td>
+      <td class="lbx-pts ${bAhead ? 'lbx-lead-b' : ''}"><span class="lbx-pts-total" style="border-top:none; margin-top:0; padding-top:0;">${formatPts(pts.B)}</span></td>
     </tr>`;
   }).join('');
   document.getElementById('sbLeaderboard').innerHTML = `
@@ -1656,6 +1740,7 @@ function indivCellHtml(n) {
 }
 
 function individualTableHtml(teamLabel, teamColor, players, pts) {
+  const color = escapeHtml(teamColor || '#999999');
   const blank = { cc: 0, altShot: 0, bestBall: 0, matchPlay: 0 };
   const rowsHtml = players.map((name) => {
     const p = pts[name] || blank;
@@ -1672,12 +1757,12 @@ function individualTableHtml(teamLabel, teamColor, players, pts) {
     <div class="indiv-table-wrap">
       <table class="indiv-table">
         <thead>
-          <tr class="indiv-team-row"><th colspan="6">${teamNameHtml(teamLabel, teamColor)}</th></tr>
+          <tr class="indiv-team-row" style="background:${color};"><th colspan="6">${teamNameHtml(teamLabel, teamColor)}</th></tr>
           <tr class="indiv-daygroup-row"><th></th><th colspan="2">Day 1</th><th colspan="2">Day 2</th><th></th></tr>
           <tr class="indiv-col-row"><th></th><th>Captain's Choice</th><th>Alternate Shot</th><th>Best Ball</th><th>Match Play</th><th>Total</th></tr>
         </thead>
         <tbody>${rowsHtml || `<tr><td colspan="6" class="lbx-unset">No players assigned to this team yet (Admin &rarr; Roster)</td></tr>`}</tbody>
-        ${players.length ? `<tfoot><tr class="indiv-total-row"><td>Total</td><td>${formatPts(totals.cc)}</td><td>${formatPts(totals.altShot)}</td><td>${formatPts(totals.bestBall)}</td><td>${formatPts(totals.matchPlay)}</td><td>${formatPts(grandTotal)}</td></tr></tfoot>` : ''}
+        ${players.length ? `<tfoot><tr class="indiv-total-row" style="background:${color};"><td>Total</td><td>${formatPts(totals.cc)}</td><td>${formatPts(totals.altShot)}</td><td>${formatPts(totals.bestBall)}</td><td>${formatPts(totals.matchPlay)}</td><td>${formatPts(grandTotal)}</td></tr></tfoot>` : ''}
       </table>
     </div>
   `;
@@ -1716,6 +1801,7 @@ async function loadIndividualResults() {
 // left to right. A hole before anything's been decided yet shows as blank
 // rather than "AS", so "not started" and "all square" don't look the same.
 function progressionStripHtml(results, activeStart) {
+  const colors = teamColors();
   let cum = 0;
   let cells = '';
   for (let i = 0; i < results.length; i++) {
@@ -1745,7 +1831,10 @@ function progressionStripHtml(results, activeStart) {
     const tieMark = r === 'Half' ? '<div class="prog-tie" title="Tied this hole">T</div>' : '';
     const concededMark = r === 'Conceded' ? '<div class="prog-conceded" title="Conceded">C</div>' : '';
     const titleSuffix = r === 'Half' ? ' — tied' : r === 'Conceded' ? ' — conceded' : '';
-    cells += `<div class="prog-chip prog-${cls}" title="Hole ${hole}${titleSuffix}"><div class="prog-hole">${hole}</div><div class="prog-label">${label}</div>${tieMark}${concededMark}</div>`;
+    // Same team-color treatment as segStatusBadgeHtml — 'a'/'b' chips get
+    // that team's own color, 'half' keeps its neutral tie color as-is.
+    const style = cls === 'a' ? ` style="background:${escapeHtml(colors.A)};"` : cls === 'b' ? ` style="background:${escapeHtml(colors.B)};"` : '';
+    cells += `<div class="prog-chip prog-${cls}"${style} title="Hole ${hole}${titleSuffix}"><div class="prog-hole">${hole}</div><div class="prog-label">${label}</div>${tieMark}${concededMark}</div>`;
   }
   return cells;
 }

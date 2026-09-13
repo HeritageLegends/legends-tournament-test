@@ -193,7 +193,7 @@
     <section id="tab-roster" class="tab-panel" hidden>
       <div class="card">
         <h2>Roster</h2>
-        <p class="hint">Add every player and which team they're on. Handicap Index and Tee are used for Day 2 net scoring — fill them in whenever you have them, they're not required to set up pairings. <strong>Course Handicap</strong> is calculated automatically from those two (Red: Slope 111 / Rating 64.1; Gold: Slope 120 / Rating 67.1; Par 72 both) and is what's actually used for strokes on scorecards and during matches — it's read-only here, just type in Handicap Index and Tee and it fills itself in.</p>
+        <p class="hint">Add every player and which team they're on. Handicap Index and Tee are used for Day 2 net scoring — fill them in whenever you have them, they're not required to set up pairings. <strong>Course Handicap</strong> is calculated automatically from those two (Red: Slope 111 / Rating 64.1; Gold: Slope 120 / Rating 67.1; Par 72 both) and is what's actually used for strokes on scorecards and during matches — it's read-only here, just type in Handicap Index and Tee and it fills itself in. Check <strong>Scorekeeper?</strong> for every volunteer willing to keep score for their own match — once checked here, the Day 1/Day 2 Pairings tables will flag any match whose four players don't include at least one.</p>
         <table id="rosterTable">
           <thead>
             <tr>
@@ -202,6 +202,7 @@
               <th class="roster-narrow-col">Handicap Index</th>
               <th class="roster-narrow-col">Tee</th>
               <th class="roster-narrow-col">Course Handicap</th>
+              <th class="roster-narrow-col">Scorekeeper?</th>
               <th class="roster-action-col"></th>
             </tr>
           </thead>
@@ -222,6 +223,7 @@
       <div class="card">
         <h2>Day 1 Pairings <span class="placeholder-badge">Front 9: Captain's Choice · Back 9: Mod. Alt Shot</span></h2>
         <p class="hint">Each match is 2 players per team. Use placeholder matchups now — everything here is editable later once captains set real pairings. Start Hole accepts plain text, so if the pro shop doubles up a hole for the shotgun (two groups starting from the same tee, a few minutes apart), enter it as e.g. "18a" and "18b" — this is just for the pairing sheet/scorecard and doesn't affect any scoring.</p>
+        <p id="day1SkSummary" class="hint" style="font-weight:600;"></p>
         <table>
           <thead>
             <tr><th></th><th colspan="2" id="day1TeamAHeader">Team A</th><th colspan="2" id="day1TeamBHeader">Team B</th><th>Start Hole</th><th>Scorekeeper PIN</th></tr>
@@ -242,6 +244,7 @@
       <div class="card">
         <h2>Day 2 Pairings <span class="placeholder-badge">Front 9: Best Ball · Back 9: Individual Match Play</span></h2>
         <p class="hint">Best Ball uses the same 2-vs-2 foursome as the match below. For the back-nine Individual Match Play, pick which player from each team faces which — defaults to Player 1 vs Player 1 and Player 2 vs Player 2. Start Hole accepts plain text, so a doubled-up shotgun hole can be entered as e.g. "18a" and "18b" — display only, doesn't affect scoring.</p>
+        <p id="day2SkSummary" class="hint" style="font-weight:600;"></p>
         <table>
           <thead>
             <tr><th></th><th colspan="2" id="day2TeamAHeader">Team A</th><th colspan="2" id="day2TeamBHeader">Team B</th><th>Start Hole</th><th>Scorekeeper PIN</th></tr>
@@ -691,6 +694,15 @@ function teamLabel(key) {
   return key;
 }
 
+// Boolean roster fields round-trip through the Sheet as an actual TRUE/FALSE
+// checkbox value, which Apps Script hands back as a real JS boolean — but
+// treat the string forms as true too, just in case a cell was ever typed by
+// hand rather than checked.
+function isScorekeeper(p) {
+  const v = p && p.Scorekeeper;
+  return v === true || v === 'TRUE' || v === 'true';
+}
+
 function rosterRowEl(p, idx) {
   const tr = document.createElement('tr');
   tr.innerHTML = `
@@ -707,14 +719,22 @@ function rosterRowEl(p, idx) {
     <td><input type="number" step="0.1" value="${p.HandicapIndex || ''}" data-field="HandicapIndex" data-idx="${idx}"></td>
     <td><input type="text" value="${escapeAttr(p.Tee || '')}" data-field="Tee" data-idx="${idx}"></td>
     <td class="roster-ch-cell" data-ch-idx="${idx}">${rosterChDisplay(p)}</td>
+    <td style="text-align:center;"><input type="checkbox" data-field="Scorekeeper" data-idx="${idx}" ${isScorekeeper(p) ? 'checked' : ''}></td>
     <td><button class="link" onclick="removeRosterRow(${idx})">Remove</button></td>
   `;
   tr.querySelectorAll('input, select').forEach((el) => {
     el.addEventListener('change', (e) => {
-      roster[idx][e.target.dataset.field] = e.target.value;
+      const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      roster[idx][e.target.dataset.field] = value;
       if (e.target.dataset.field === 'HandicapIndex' || e.target.dataset.field === 'Tee') {
         const chCell = tr.querySelector(`[data-ch-idx="${idx}"]`);
         if (chCell) chCell.textContent = rosterChDisplay(roster[idx]);
+      }
+      if (e.target.dataset.field === 'Name' || e.target.dataset.field === 'Scorekeeper') {
+        // The Pairings tables' "needs a scorekeeper" flags read straight off
+        // this same in-memory roster array, so keep them current as you type
+        // rather than only after Save Roster.
+        refreshPairingDropdownSources();
       }
     });
   });
@@ -845,6 +865,25 @@ function renderPairings(day) {
     pairings[day].forEach((row) => { if (!row.MP1_TeamA && !isSwapped(row)) syncMatchPlayPairing(row); });
   }
   pairings[day].forEach((row, idx) => body.appendChild(pairingRowEl(day, row, idx)));
+  updateScorekeeperSummary(day);
+}
+
+// "N of M matches have a scorekeeper" above each Pairings table — only
+// counts matches that actually have all 4 players assigned, same as the
+// per-row flag below, so it tracks "matches ready to go" rather than
+// penalizing pairings you haven't finished setting up yet.
+function updateScorekeeperSummary(day) {
+  const el = document.getElementById(day === '2' || day === 2 ? 'day2SkSummary' : 'day1SkSummary');
+  if (!el) return;
+  const staffedRows = (pairings[day] || []).filter((row) => [row.TeamA_P1, row.TeamA_P2, row.TeamB_P1, row.TeamB_P2].every(Boolean));
+  const withSk = staffedRows.filter((row) => [row.TeamA_P1, row.TeamA_P2, row.TeamB_P1, row.TeamB_P2].some((name) => {
+    const p = roster.find((r) => r.Name === name);
+    return isScorekeeper(p);
+  }));
+  if (!staffedRows.length) { el.textContent = ''; return; }
+  const allSet = withSk.length === staffedRows.length;
+  el.textContent = `${withSk.length} of ${staffedRows.length} set-up match${staffedRows.length === 1 ? '' : 'es'} have a scorekeeper assigned.`;
+  el.style.color = allSet ? 'var(--ok)' : '#8a6300';
 }
 
 function pairingRowEl(day, row, idx) {
@@ -883,6 +922,8 @@ function pairingRowEl(day, row, idx) {
     renderPairings(day);
   });
 
+  const skRow = scorekeeperStatusRowEl(row);
+
   if (isDay2) {
     const mpRow = document.createElement('tr');
     mpRow.innerHTML = `
@@ -904,10 +945,40 @@ function pairingRowEl(day, row, idx) {
     });
     const frag = document.createDocumentFragment();
     frag.appendChild(tr);
+    if (skRow) frag.appendChild(skRow);
     frag.appendChild(mpRow);
     return frag;
   }
 
+  if (skRow) {
+    const frag = document.createDocumentFragment();
+    frag.appendChild(tr);
+    frag.appendChild(skRow);
+    return frag;
+  }
+
+  return tr;
+}
+
+// A thin note row under each match: green "✓ Scorekeeper: <name(s)>" once at
+// least one of the four assigned players is checked as a Scorekeeper on the
+// Roster tab, or an amber "⚠ No scorekeeper assigned" if the match is fully
+// staffed but none of its four players are. Returns null (no row at all) for
+// a match that isn't staffed yet, since flagging an empty match as "needs a
+// scorekeeper" would just be noise while pairings are still being built.
+function scorekeeperStatusRowEl(row) {
+  const players = [row.TeamA_P1, row.TeamA_P2, row.TeamB_P1, row.TeamB_P2].filter(Boolean);
+  if (!players.length) return null;
+  const skNames = players.filter((name) => {
+    const p = roster.find((r) => r.Name === name);
+    return isScorekeeper(p);
+  });
+  const tr = document.createElement('tr');
+  if (skNames.length) {
+    tr.innerHTML = `<td></td><td colspan="6" class="hint" style="color:var(--ok); font-weight:600;">✓ Scorekeeper: ${escapeHtml(skNames.join(', '))}</td>`;
+  } else {
+    tr.innerHTML = `<td></td><td colspan="6" class="hint" style="color:#8a6300; font-weight:600;">⚠ No scorekeeper assigned for this match — check "Scorekeeper?" for one of these players on the Roster tab, or tell them the PIN some other way.</td>`;
+  }
   return tr;
 }
 
@@ -1126,7 +1197,7 @@ const COMPACT_PRINT_CSS = `
   table.cc-table th.cc-name, table.cc-table td.cc-name { text-align: left; padding: 0.5px 5px; font-weight: 600; width: 21%; }
   table.cc-table th.cc-winner, table.cc-table td.cc-winner { width: 8.5%; font-weight: 600; }
   tr.cc-meta-row td { font-weight: 600; background: #f2f2f2; font-size: 6.6pt; }
-  tr.cc-tie-row td { font-size: 6.6pt; color: #555; font-style: italic; padding-top: 0; padding-bottom: 0; line-height: 1; }
+  tr.cc-tie-row td { font-size: 6pt; color: #555; font-style: italic; padding-top: 0; padding-bottom: 0; line-height: 0.85; }
   /* Entry rows (not a meta/reference row, not a Tie label row) are where W/T
      actually gets written by hand — a bit more breathing room than the
      reference rows above them, since there's headroom to spare. */
@@ -1299,6 +1370,14 @@ function openScorecardWindow(cardsHtml) {
 function ccTieRowHtml(label) {
   return `<tr class="cc-tie-row"><td class="cc-name"></td><td colspan="9"></td><td class="cc-winner">${escapeHtml(label)}</td></tr>`;
 }
+// A borderless gap row — used only between two entirely separate matchups
+// (e.g. Day 2 back 9's two Individual Match Play pairings) so they read as
+// two different matches rather than one continuous 4-row block. Not used
+// between the two rows of the SAME matchup (those stay tight, with only the
+// thin Tie row between them).
+function ccSpacerRowHtml() {
+  return '<tr class="cc-spacer"><td colspan="11" style="border:none; padding:4px 0;"></td></tr>';
+}
 
 // Same reference-row math as printSegmentHtml, but a single stacked table per
 // segment (no side-by-side "Circle Winning Team" box) with an extra narrow
@@ -1411,8 +1490,13 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
   };
 
   const frontRows = bestBallRowHtml(names.A, settings.TeamAColor, row.TeamA_P1, row.TeamA_P2, 1, 9) + ccTieRowHtml('Tie') + bestBallRowHtml(names.B, settings.TeamBColor, row.TeamB_P1, row.TeamB_P2, 1, 9);
+  // Each Individual Match Play pairing (A1 vs B1, A2 vs B2) stays tight —
+  // just the thin Tie row between its own two competitors — but a visible
+  // gap (ccSpacerRowHtml) separates the two pairings from each other, so the
+  // card reads as two distinct matches rather than one 5-row block.
   const backRows =
     matchPlayRowHtml(row.TeamA_P1, names.A, settings.TeamAColor, 10, 18) + ccTieRowHtml('Tie') + matchPlayRowHtml(row.TeamB_P1, names.B, settings.TeamBColor, 10, 18) +
+    ccSpacerRowHtml() +
     matchPlayRowHtml(row.TeamA_P2, names.A, settings.TeamAColor, 10, 18) + ccTieRowHtml('Tie') + matchPlayRowHtml(row.TeamB_P2, names.B, settings.TeamBColor, 10, 18);
 
   const frontSegment = printSegmentHtmlCompact('Front 9: Best Ball', instruction, 1, 9, startHoleNum, frontRows);
