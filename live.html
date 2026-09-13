@@ -48,15 +48,25 @@
   /* Rides on the same .wpick-row line as the win/tie/win buttons, as the
      4th button — styled green so it stands out as the "commit" action. */
   .hbh-save-next { flex: 1 1 140px; padding: 14px 6px; font-size: 0.9rem; font-weight: 700; line-height: 1.2; white-space: normal; border-radius: 8px; background: var(--green); color: #fff; border: none; cursor: pointer; }
-  .hbh-seglabel { text-align: center; font-weight: 600; color: var(--muted); font-size: 0.82rem; margin: 2px 0 8px; }
-  /* 18-hole completion map above the pick buttons — empty/unsaved/saved per
-     hole, click any dot to jump there. */
+  .hbh-seglabel { text-align: center; font-weight: 800; color: var(--green-dark); font-size: 1.08rem; margin: 6px 0 12px; padding: 8px 10px; background: #e8f2ec; border: 1px solid #cfe3d7; border-radius: 8px; }
+  /* 18-hole completion map above the pick buttons — click any dot to jump
+     there. A hole with no result yet is grey; once a winner (or Tie) is
+     picked, the dot's background switches to that team's color (or the tie
+     color) via an inline style set in JS — .hbh-progress-decided just sets
+     the text/border treatment on top of whatever color was applied inline.
+     Save status (entered-but-unconfirmed vs. confirmed-saved) is still shown,
+     via a dashed vs. solid border, since that's independent of who won. */
   .hbh-progress-strip { display: flex; flex-wrap: wrap; gap: 3px; margin: 6px 0 10px; justify-content: center; }
-  .hbh-progress-dot { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; cursor: pointer; border: 1.5px solid transparent; }
+  .hbh-progress-dot { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; cursor: pointer; border: 1.5px solid transparent; transition: width 0.12s, height 0.12s, font-size 0.12s; }
   .hbh-progress-empty { background: #eee; color: var(--muted); }
   .hbh-progress-unsaved { background: #fff3cd; color: #8a6300; border-color: #f0d580; }
   .hbh-progress-saved { background: var(--win); color: var(--green-dark); }
-  .hbh-progress-current { border-color: var(--green-dark); box-shadow: 0 0 0 1.5px var(--green-dark); }
+  .hbh-progress-decided { color: #222; text-shadow: 0 1px 1px rgba(255,255,255,0.55); }
+  .hbh-progress-decided.hbh-progress-unsaved { border: 2px dashed #8a6300; }
+  .hbh-progress-decided.hbh-progress-saved { border: 1.5px solid rgba(0,0,0,0.25); }
+  /* Bigger, not just outlined, so the hole currently being entered pops out
+     of the row instead of just having a highlighted edge. */
+  .hbh-progress-current { width: 32px; height: 32px; font-size: 0.85rem; border-color: var(--green-dark); border-width: 2.5px; box-shadow: 0 0 0 2px var(--green-dark); z-index: 1; }
   /* This match's own scorecard, mirrored onto the entry screen below the
      pick buttons — same progression-strip look as Scoreboard → All Match
      Scorecards. */
@@ -154,9 +164,46 @@
   /* Small badge marking a hole filled in by a concession rather than actually
      played out — distinct from the tie badge above. */
   .prog-conceded { position: absolute; top: -6px; right: -4px; width: 15px; height: 15px; border-radius: 50%; background: var(--muted); color: #fff; border: 1.5px solid #fff; font-size: 0.6rem; font-weight: 800; line-height: 12px; }
+  /* First-thing-you-see gate: are you keeping score, or just here to watch?
+     Covers the whole page (rather than living inside a tab) so it's the very
+     first thing anyone opening this link sees, before either tab is usable. */
+  .entry-gate { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .entry-gate-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 26px 22px; max-width: 380px; width: 100%; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.12); }
+  .entry-gate-card h2 { margin: 0 0 4px; color: var(--green-dark); font-size: 1.15rem; }
+  .entry-gate-card .hint { font-size: 0.9rem; margin: 4px 0 18px; }
+  .entry-gate-choice { display: flex; flex-direction: column; gap: 10px; }
+  .entry-gate-choice button { padding: 14px 10px; font-size: 1rem; }
+  .entry-gate-pin .row { justify-content: center; margin-bottom: 8px; }
+  .entry-gate-pin input { font-size: 1.1rem; padding: 10px 12px; width: 130px; text-align: center; }
+  .entry-gate-linklike { background: none; border: none; color: var(--green); text-decoration: underline; cursor: pointer; font-size: 0.85rem; padding: 6px; margin-top: 6px; }
 </style>
 </head>
 <body>
+
+<!-- ENTRY GATE — shown first, before either tab, so every visitor says up
+     front whether they're keeping score (and gets routed straight to their
+     match by PIN) or just watching (and goes straight to the Scoreboard). -->
+<div id="entryGate" class="entry-gate">
+  <div class="entry-gate-card">
+    <h2>Heritage Legends Tournament</h2>
+    <div id="entryGateChoice">
+      <p class="hint">Are you keeping score for a match, or just checking the Scoreboard?</p>
+      <div class="entry-gate-choice">
+        <button type="button" class="primary" onclick="chooseScorekeeper()">I'm a Scorekeeper</button>
+        <button type="button" class="secondary" onclick="chooseViewer()">Just Viewing the Scoreboard</button>
+      </div>
+    </div>
+    <div id="entryGatePin" class="entry-gate-pin" hidden>
+      <p class="hint">Enter your match's Scorekeeper PIN.</p>
+      <div class="row">
+        <input type="text" inputmode="numeric" id="gatePinInput" placeholder="PIN" maxlength="8">
+        <button type="button" class="primary" onclick="submitGatePin()">Continue</button>
+      </div>
+      <div id="gatePinError" class="hint" style="color:var(--error); min-height:1.2em;"></div>
+      <button type="button" class="entry-gate-linklike" onclick="chooseViewer()">I don't have a PIN — just viewing</button>
+    </div>
+  </div>
+</div>
 
 <header>
   <div>
@@ -186,10 +233,6 @@
       <div id="scStatusLines"></div>
       <div class="row" id="scViewToggle" style="margin-top:4px;"></div>
       <div id="scGridWrap"></div>
-      <div class="row" style="margin-top:12px;">
-        <button class="primary" onclick="saveCurrentMatch()">Save Now</button>
-        <span class="hint">Scores also autosave a couple seconds after you stop typing.</span>
-      </div>
     </div>
   </section>
 
@@ -373,6 +416,32 @@ function teamNameHtml(name, color) {
 function dayIsLocked(day) {
   const v = settings[day === '2' ? 'Day2Locked' : 'Day1Locked'];
   return v === true || v === 'TRUE' || v === 'true';
+}
+// YYYY-MM-DD in the device's own local time zone (not UTC — toISOString()
+// would roll back to the previous day for anyone west of UTC in the evening,
+// which is exactly the wrong direction for an on-site, same-day check).
+function localDateString(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+// Mirrors otherDayIsBlockedToday_ in Code.gs — the server enforces this on
+// every save regardless (so it can't be bypassed by an old cached page), but
+// checking it here too lets the UI show a clear message up front instead of
+// a scorekeeper filling in a whole hole's picks only to have the save fail.
+// Only kicks in once the admin has set BOTH tournament dates (Settings tab)
+// and today actually matches one of them — otherwise (before/after the
+// event, or setting things up ahead of time) nothing is blocked. The
+// existing "Suspend PIN Requirement" testing toggle also lifts this, since
+// that's already the app's one on/off switch for "we're just testing."
+function dayBlockedToday(day) {
+  if (suspendPinsOn()) return false;
+  const day1 = String((settings && settings.Day1Date) || '').trim();
+  const day2 = String((settings && settings.Day2Date) || '').trim();
+  if (!day1 || !day2) return false;
+  const today = localDateString(new Date());
+  if (today === day1 && String(day) === '2') return true;
+  if (today === day2 && String(day) === '1') return true;
+  return false;
 }
 function matchLabel(day, row) {
   const has = row.TeamA_P1 || row.TeamA_P2 || row.TeamB_P1 || row.TeamB_P2;
@@ -579,6 +648,18 @@ function renderScoringUI(day, matchNum) {
     return;
   }
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
+  if (dayBlockedToday(day)) {
+    toggleEl.innerHTML = '';
+    if (modeEl) modeEl.innerHTML = '';
+    document.getElementById('scStatusLines').innerHTML = '';
+    const otherDay = String(day) === '2' ? '1' : '2';
+    document.getElementById('scGridWrap').innerHTML = `
+      <div class="card" style="margin:0; background:#fbf3e4; border-color:var(--gold);">
+        <p class="hint" style="margin-top:0; color:#8a6300; font-weight:600;">Today is Day ${escapeHtml(otherDay)} of the tournament — Day ${escapeHtml(String(day))} scores can't be entered yet. Switch to the Day ${escapeHtml(otherDay)} tab above.</p>
+      </div>
+    `;
+    return;
+  }
   if (!matchIsUnlocked(day, matchNum, pairingRow)) {
     toggleEl.innerHTML = '';
     if (modeEl) modeEl.innerHTML = '';
@@ -685,10 +766,15 @@ function playerStrokeNoteHtml(name, hole) {
 // picked is marked with a bold border and a leading checkmark instead, since
 // a color change alone wouldn't be visible against a background that's
 // already colored either way.
-function winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor) {
+// holeSuffix (optional, e.g. " Hole 5") is appended to every button's label —
+// passed only by the hole-by-hole call sites below (teamWinnerBlockHtml /
+// matchupWinnerBlockHtml), never by matchWinnerBlockHtml's whole-9 segment
+// picks, since "Wins Hole 5" wouldn't make sense for a pick covering 9 holes.
+function winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor, holeSuffix) {
+  const suffix = holeSuffix || '';
   const btn = (v, rawLabel, cls, color) => {
     const isActive = val === v;
-    const label = (isActive ? '✓ ' : '') + (v === 'Half' ? rawLabel : `${rawLabel} Wins`);
+    const label = (isActive ? '✓ ' : '') + (v === 'Half' ? `${rawLabel}${suffix}` : `${rawLabel} Wins${suffix}`);
     const style = color ? ` style="background:${escapeHtml(color)};"` : '';
     return `<button type="button" class="wpick-btn ${isActive ? 'active ' + cls : ''}" data-wfield="${field}" data-wval="${v}"${style}>${escapeHtml(label)}</button>`;
   };
@@ -697,21 +783,24 @@ function winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bCo
 // Team-vs-team pick (Day 1 both segments, Day 2 Best Ball) — just the three
 // buttons, since each button's own "<Team> Wins" text already says who it's
 // for. extraBtnHtml (optional) is appended into the same button row — used
-// to fold the "Save and move to hole N" button onto this line.
+// to fold the "Save and move to hole N" button onto this line. Only ever
+// used from hole-by-hole entry (renderHoleByHole), so it always labels its
+// buttons with the specific hole (" Hole N") — see winnerButtonsHtml above.
 function teamWinnerBlockHtml(field, holeRow, hole, aLabel, bLabel, extraBtnHtml, aColor, bColor) {
   const val = holeRow[field] || '';
-  return `<div class="wpick-block">${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor)}</div>`;
+  return `<div class="wpick-block">${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor, ` Hole ${hole}`)}</div>`;
 }
 // Player-vs-player pick (Day 2 Individual Match Play, one block per MP slot).
 // extraBtnHtml (optional) is appended into the same button row. aColor/bColor
 // (optional) mark which team each player belongs to with a small dot, since
 // this is otherwise a player-vs-player screen with no team names in sight.
+// Only ever used from hole-by-hole entry, same as teamWinnerBlockHtml above.
 function matchupWinnerBlockHtml(field, holeRow, hole, aName, bName, extraBtnHtml, aColor, bColor) {
   const val = holeRow[field] || '';
   const aLabel = lastNameOrUnassigned(aName), bLabel = lastNameOrUnassigned(bName);
   const aDot = aColor ? teamDotHtml(aColor) : '';
   const bDot = bColor ? teamDotHtml(bColor) : '';
-  return `<div class="wpick-block"><div class="wpick-sides"><div class="wpick-side">${aDot}${escapeHtml(aLabel)}${playerStrokeNoteHtml(aName, hole)}</div><div class="wpick-side">${bDot}${escapeHtml(bLabel)}${playerStrokeNoteHtml(bName, hole)}</div></div>${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor)}</div>`;
+  return `<div class="wpick-block"><div class="wpick-sides"><div class="wpick-side">${aDot}${escapeHtml(aLabel)}${playerStrokeNoteHtml(aName, hole)}</div><div class="wpick-side">${bDot}${escapeHtml(bLabel)}${playerStrokeNoteHtml(bName, hole)}</div></div>${winnerButtonsHtml(field, val, aLabel, bLabel, extraBtnHtml, aColor, bColor, ` Hole ${hole}`)}</div>`;
 }
 
 // ---- "Enter Match Winner" mode: one person per team declares each 9's (or
@@ -840,18 +929,47 @@ function renderMatchWinnerMode(day, matchNum) {
   renderStatusLines(day, matchNum, pairingRow);
 }
 
+// What color (if any) a hole's dot should show, based on who's currently
+// picked to win it — not its save state, which is tracked separately. Day 1
+// and Day 2's front 9 (holes 0-8, 0-based) have a single result field, so
+// this is a direct lookup. Day 2's back 9 (holes 9-17) runs two separate
+// Individual Match Play matchups at once (MP1Winner, MP2Winner) that can
+// have different winners on the same hole — when they agree, one solid
+// color; when they disagree, a diagonal split so neither result is hidden;
+// when only one of the two has been entered so far, that one's color alone.
+function holeResultColor(day, idx) {
+  const holeRow = currentHoles[idx];
+  if (!holeRow) return null;
+  const colors = teamColors();
+  const colorFor = (v) => (v === 'A' ? colors.A : v === 'B' ? colors.B : v === 'Half' ? 'var(--half)' : null);
+  if (day === '2' && idx >= 9) {
+    const c1 = colorFor(holeRow.MP1Winner);
+    const c2 = colorFor(holeRow.MP2Winner);
+    if (c1 && c2) return c1 === c2 ? c1 : `linear-gradient(135deg, ${c1} 50%, ${c2} 50%)`;
+    return c1 || c2 || null;
+  }
+  const field = day === '2' ? 'BestBallWinner' : 'Winner';
+  return colorFor(holeRow[field]);
+}
+
 // Compact 18-dot map of this match's holes — click any dot to jump there,
-// same as the dropdown. Three states per hole: empty (nothing entered yet),
-// unsaved (entered here but not yet confirmed written to the sheet — still
-// mid-autosave-debounce, or a save attempt errored), and saved (confirmed in
-// the sheet as of the last load or successful save). This is what actually
-// answers "did that stick" at a glance, rather than only the one-line
-// indicator up top which only reflects the very last save attempt.
+// same as the dropdown. Once a hole has a winner (or Tie) picked, its dot is
+// filled with that team's color (see holeResultColor above); a hole with
+// nothing entered yet stays plain grey. Independently, the border shows
+// whether that pick is confirmed saved: dashed/amber for entered-but-not-
+// yet-confirmed (still mid-autosave-debounce, or a save attempt errored),
+// solid for confirmed in the sheet as of the last load or successful save.
+// That's what actually answers "did that stick" at a glance, rather than
+// only the one-line indicator up top which only reflects the very last save
+// attempt.
 function holeCompletionStripHtml(day, matchNum) {
   const dots = Array.from({ length: 18 }, (_, i) => {
     const state = holeSaveState(day, matchNum, i);
     const current = i === scHoleIndex ? ' hbh-progress-current' : '';
-    return `<div class="hbh-progress-dot hbh-progress-${state}${current}" data-hole-idx="${i}" title="Hole ${i + 1}${state === 'saved' ? ' — saved' : state === 'unsaved' ? ' — entered, not yet confirmed saved' : ' — not entered'}">${i + 1}</div>`;
+    const resultColor = holeResultColor(day, i);
+    const decidedCls = resultColor ? ' hbh-progress-decided' : '';
+    const style = resultColor ? ` style="background:${resultColor};"` : '';
+    return `<div class="hbh-progress-dot hbh-progress-${state}${decidedCls}${current}"${style} data-hole-idx="${i}" title="Hole ${i + 1}${state === 'saved' ? ' — saved' : state === 'unsaved' ? ' — entered, not yet confirmed saved' : ' — not entered'}">${i + 1}</div>`;
   });
   return `<div class="hbh-progress-strip">${dots.join('')}</div>`;
 }
@@ -872,9 +990,14 @@ function renderHoleByHole(day, matchNum) {
   const h = scHoleIndex + 1; // 1-based hole number
   const nextH = (h % 18) + 1; // wraps 18 -> 1, same as stepHole(1)
   const holeRow = currentHoles[scHoleIndex];
-  const segLabel = h <= 9
+  const segLabelPlain = h <= 9
     ? (day === '2' ? 'Best Ball (front 9)' : "Captain's Choice (front 9)")
     : (day === '2' ? 'Individual Match Play (back 9)' : 'Modified Alternate Shot (back 9)');
+  // On the very first hole of a new segment (hole 1 or hole 10 — the turn),
+  // call out the format change explicitly rather than just naming it, since
+  // that's the one moment a scorekeeper might not realize the rules just
+  // switched (e.g. Captain's Choice giving way to Modified Alternate Shot).
+  const segLabel = (h === 1 || h === 10) ? `You are now playing ${segLabelPlain}` : segLabelPlain;
   const saveBtnHtml = `<button type="button" class="hbh-save-next" onclick="saveAndAdvance('${day}', '${matchNum}')">Save now and move to hole ${nextH}</button>`;
   // The dropdown just below already jumps straight to this match's own Start
   // Hole (see onScMatchSelected) — this line just says so in plain words,
@@ -948,7 +1071,7 @@ function renderHoleByHole(day, matchNum) {
     ${concedeBannerHtml}
     <div class="hbh-seglabel">${escapeHtml(segLabel)}</div>
     ${blocksHtml}
-    <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save now and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that. The row of hole numbers above shows what's actually confirmed: grey means nothing's entered, yellow means it's entered here but not yet confirmed saved, green means it's saved — tap any number to jump to that hole.</p>
+    <p class="hint" style="margin-top:10px;">Results still autosave a couple seconds after your last tap, or hit "Save now and move to hole ${nextH}" to save right away and move on. On a shotgun start, jump straight to whichever hole your group just finished — Prev and the dropdown just navigate, they don't move any faster than that. The row of hole numbers above shows what's actually confirmed: grey means nothing's entered yet; once a hole has a winner (or Tie), its number fills with that team's color — a dashed border means it's entered here but not yet confirmed saved, a solid border means it's saved — tap any number to jump to that hole.</p>
     ${mirrorScorecardHtml}
   `;
 
@@ -1063,12 +1186,14 @@ function setSaveIndicator(cls, text) {
   el.className = 'save-indicator ' + cls;
   el.textContent = text;
 }
-// Called two ways: with no arguments, by the "Save Now" button — always means
-// "save whatever match is on screen right now, using what's on screen right
-// now". With explicit args, by a debounced autosave (see scheduleAutosave) —
-// always saves the specific match/data it was scheduled for, regardless of
-// what's currently selected, and only touches the visible Saving/Saved
-// indicator if that same match still happens to be the one on screen.
+// Always called with explicit day/matchNum/holes — by a debounced autosave
+// (see scheduleAutosave) or by the per-hole "Save now and move to hole N"
+// button — so it always saves the specific match/data it was scheduled for,
+// regardless of what's currently selected, and only touches the visible
+// Saving/Saved indicator if that same match still happens to be the one on
+// screen. The day/matchNum/holes fallbacks below (reading straight off the
+// dropdowns/currentHoles) are just defensive — nothing currently calls this
+// without arguments — in case something ever does again.
 async function saveCurrentMatch(day, matchNum, holes) {
   if (day === undefined) day = document.getElementById('scDay').value;
   if (matchNum === undefined) matchNum = document.getElementById('scMatch').value;
@@ -1681,10 +1806,77 @@ function escapeHtml(str) {
   return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// ====================== ENTRY GATE ======================
+// See the #entryGate markup near the top of <body>. Kicked off in parallel
+// with loadShared() below (sharedDataPromise) so the "Scorekeeper or
+// Viewing?" question shows up instantly, without waiting on the network —
+// only the PIN lookup itself needs to wait for pairings data to arrive.
+function hideEntryGate() {
+  const el = document.getElementById('entryGate');
+  if (el) el.remove();
+}
+function chooseViewer() {
+  hideEntryGate();
+  document.querySelector('.tab-btn[data-tab="scoreboard"]').click();
+}
+function chooseScorekeeper() {
+  document.getElementById('entryGateChoice').hidden = true;
+  document.getElementById('entryGatePin').hidden = false;
+  document.getElementById('gatePinInput').focus();
+}
+// Same PIN can only belong to one match in normal use (each foursome gets
+// its own), so the first match found wins — checked across both days since
+// the scorekeeper hasn't told us which day they're on, only their PIN.
+function findMatchByPin(pin) {
+  for (const day of ['1', '2']) {
+    const rows = pairings[day] || [];
+    for (const row of rows) {
+      const requiredPin = String(row.PIN || '').trim();
+      if (requiredPin && requiredPin === pin) return { day, matchNum: String(row.MatchNum) };
+    }
+  }
+  return null;
+}
+async function submitGatePin() {
+  const input = document.getElementById('gatePinInput');
+  const entered = input.value.trim();
+  const errEl = document.getElementById('gatePinError');
+  if (!entered) { errEl.textContent = 'Enter your PIN, or tap "I don\'t have a PIN" below.'; return; }
+  errEl.textContent = 'Checking…';
+  input.disabled = true;
+  await sharedDataPromise; // pairings (and AdminPIN, via settings) may still be loading
+  input.disabled = false;
+  const adminPin = String((settings && settings.AdminPIN) || '').trim();
+  if (adminPin && entered === adminPin) {
+    // The Admin PIN unlocks every match on this device — there's no single
+    // match to route to, so just drop into Live Scoring's normal day/match
+    // dropdowns, everything already unlocked.
+    setAdminUnlocked(true);
+    hideEntryGate();
+    return;
+  }
+  const match = findMatchByPin(entered);
+  if (!match) {
+    errEl.textContent = 'PIN not recognized — check with your foursome or the admin.';
+    return;
+  }
+  storePin(match.day, match.matchNum, entered);
+  document.getElementById('scDay').value = match.day;
+  populateMatchDropdown();
+  document.getElementById('scMatch').value = match.matchNum;
+  await onScMatchSelected();
+  hideEntryGate();
+}
+document.getElementById('gatePinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitGatePin(); });
+
 // ====================== BOOT ======================
+// Started immediately (not inside boot() below) so the entry gate's PIN
+// lookup can await this same promise without waiting on loadVersionBadge or
+// the initial default-match render, neither of which it needs.
+const sharedDataPromise = loadShared();
 (async function boot() {
   loadVersionBadge();
-  await loadShared();
+  await sharedDataPromise;
   populateMatchDropdown();
   await onScMatchSelected();
 })();

@@ -211,7 +211,7 @@
           <button class="secondary" onclick="addRosterRow()">+ Add Player</button>
         </div>
         <div style="margin-top:16px;">
-          <button class="primary" onclick="saveRoster()">Save Roster</button>
+          <button class="primary" id="saveRosterBtn" onclick="saveRoster()">Save Roster</button>
         </div>
         <div id="rosterStatus" class="status"></div>
       </div>
@@ -228,7 +228,7 @@
           </thead>
           <tbody id="day1Body"></tbody>
         </table>
-        <p class="hint">A match's PIN (if set) is what live.html asks a scorekeeper for before letting them enter that match's scores — leave blank to leave a match open to anyone with the link. Tell each foursome their PIN before the round (e.g. write it on their scorecard).</p>
+        <p class="hint">A match's PIN (if set) is what live.html asks a scorekeeper for before letting them enter that match's scores — leave blank to leave a match open to anyone with the link. Only the scorekeeper should be told the PIN, so pass it along directly (in person, by text) rather than writing it anywhere players in general will see it — it's deliberately left off printed scorecards.</p>
         <div style="margin-top:16px;">
           <button class="secondary" onclick="generateMissingPins('1')">Generate PINs for matches without one</button>
           <button class="primary" onclick="savePairings('1')">Save Day 1 Pairings</button>
@@ -248,7 +248,7 @@
           </thead>
           <tbody id="day2Body"></tbody>
         </table>
-        <p class="hint">A match's PIN (if set) is what live.html asks a scorekeeper for before letting them enter that match's scores — leave blank to leave a match open to anyone with the link. Tell each foursome their PIN before the round (e.g. write it on their scorecard).</p>
+        <p class="hint">A match's PIN (if set) is what live.html asks a scorekeeper for before letting them enter that match's scores — leave blank to leave a match open to anyone with the link. Only the scorekeeper should be told the PIN, so pass it along directly (in person, by text) rather than writing it anywhere players in general will see it — it's deliberately left off printed scorecards.</p>
         <div style="margin-top:16px;">
           <button class="secondary" onclick="generateMissingPins('2')">Generate PINs for matches without one</button>
           <button class="primary" onclick="savePairings('2')">Save Day 2 Pairings</button>
@@ -261,9 +261,9 @@
     <section id="tab-holehc" class="tab-panel" hidden>
       <div class="card">
         <h2>Hole Handicaps</h2>
-        <p class="hint">Stroke Index ranks each hole 1 (hardest) to 18 (easiest) — this is what Day 2's Live Scoring page uses to work out net scores from each player's Handicap Index on the Roster tab. Red tees play to a different Stroke Index than every other tee on this course, so there's a separate column just for them: any Roster player whose Tee is "Red" gets strokes from that column instead, everyone else (Gold, White, Blue, etc.) uses the regular Stroke Index column. Par is optional, just for reference, and doesn't change by tee. This table is set once per course/tee setup and shouldn't need changing after that — if it ever does (a new course, a corrected number), edit it directly in the Google Sheet's <code>HoleHandicaps</code> / <code>HoleHandicapsRed</code> tabs rather than here.</p>
+        <p class="hint">Gold Stroke Index ranks each hole 1 (hardest) to 18 (easiest) — this is what Day 2's Live Scoring page uses to work out net scores from each player's Handicap Index on the Roster tab. Red tees play to a different Stroke Index than every other tee on this course, so there's a separate column just for them: any Roster player whose Tee is "Red" gets strokes from that column instead, everyone else (Gold, White, Blue, etc.) uses the regular Gold Stroke Index column. Par is optional, just for reference, and doesn't change by tee. This table is set once per course/tee setup and shouldn't need changing after that — if it ever does (a new course, a corrected number), edit it directly in the Google Sheet's <code>HoleHandicaps</code> / <code>HoleHandicapsRed</code> tabs rather than here.</p>
         <table>
-          <thead><tr><th style="width:70px;">Hole</th><th>Stroke Index</th><th>Red Stroke Index</th><th style="width:90px;">Par</th></tr></thead>
+          <thead><tr><th style="width:70px;">Hole</th><th>Gold Stroke Index</th><th>Red Stroke Index</th><th style="width:90px;">Par</th></tr></thead>
           <tbody id="holeHcBody"></tbody>
         </table>
       </div>
@@ -276,12 +276,13 @@
         <p class="hint">
           For players who'd rather write scores by hand than use Live Scoring on a phone. Prints one
           paper scorecard per match with the tournament name, date, tee, and hole numbers.
-          <strong>Day 2</strong> also shows the Stroke Index and each player's handicap strokes marked
+          <strong>Day 2</strong> also shows the Gold Stroke Index and each player's handicap strokes marked
           as dots on the holes they apply to. <strong>Day 1</strong> is one row per team instead of per
           player, since Captain's Choice and Modified Alternate Shot are both one combined score per
           team per hole — no handicap strokes apply, so there's no Hcp row or dots for that day.
-          Any match printed without a Scorekeeper PIN yet automatically gets one generated and saved,
-          and it's printed right on the card as a backup way to unlock scoring on Live Scoring.
+          Any match printed without a Scorekeeper PIN yet automatically gets one generated and saved
+          so scoring is still locked down on Live Scoring — but the PIN itself is never printed on the
+          card. Check the Pairings tab and tell each match's scorekeeper their PIN directly.
         </p>
         <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
           <select id="printDaySelect" onchange="populatePrintMatchSelect()">
@@ -738,6 +739,9 @@ function removeRosterRow(idx) {
 }
 
 async function saveRoster() {
+  const btn = document.getElementById('saveRosterBtn');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
   try {
     const res = await apiPost('saveRoster', { roster: JSON.stringify(roster) });
     if (res.success) {
@@ -745,12 +749,27 @@ async function saveRoster() {
       renderRoster();
       showStatus('rosterStatus', true, `Saved ${roster.length} players.`);
       refreshPairingDropdownSources();
+      flashSavedButton(btn, originalLabel);
     } else {
       showStatus('rosterStatus', false, res.error);
+      btn.disabled = false;
     }
   } catch (err) {
     showStatus('rosterStatus', false, 'Network error: ' + err.message);
+    btn.disabled = false;
   }
+}
+
+// Swaps the just-clicked Save button's own label to a checkmark for a
+// couple of seconds — on top of (not instead of) the text status line below
+// — so confirmation shows up right where the tap landed and is hard to miss,
+// rather than relying on a quiet status line under the button.
+function flashSavedButton(btn, originalLabel) {
+  btn.textContent = '✓ Saved!';
+  setTimeout(() => {
+    btn.textContent = originalLabel;
+    btn.disabled = false;
+  }, 1800);
 }
 
 function rosterNamesForTeam(team) {
@@ -1051,7 +1070,6 @@ const PRINT_CSS = `
   .sc-title { font-size: 1.3rem; font-weight: 700; }
   .sc-sub { font-size: 0.95rem; color: #444; margin-top: 2px; }
   .sc-teams { font-size: 1rem; font-weight: 600; margin-top: 4px; }
-  .sc-pin-badge { display: inline-block; margin-top: 6px; padding: 4px 10px; border: 1.5px solid #333; border-radius: 6px; font-size: 0.85rem; font-weight: 600; background: #fafafa; }
   table.sc-table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 0.8rem; }
   table.sc-table th, table.sc-table td { border: 1px solid #999; padding: 5px 2px; text-align: center; min-width: 22px; }
   table.sc-table th.sc-name, table.sc-table td.sc-name { text-align: left; padding: 5px 8px; white-space: normal; font-weight: 600; min-width: 130px; }
@@ -1100,7 +1118,6 @@ const COMPACT_PRINT_CSS = `
   .cc-header { display: flex; justify-content: space-between; align-items: flex-start; }
   .cc-teams { font-size: 11.5pt; font-weight: 700; }
   .cc-meta { font-size: 7.3pt; color: #444; margin-top: 0; }
-  .cc-pin { font-size: 7.3pt; font-weight: 700; border: 1px solid #333; border-radius: 4px; padding: 0px 7px; white-space: nowrap; margin-top: 1px; }
   .cc-segment { margin-top: 3px; }
   .cc-seg-title { font-size: 7.6pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: #123c26; }
   .cc-seg-instr { text-transform: none; font-style: italic; font-weight: 400; color: #555; }
@@ -1176,7 +1193,6 @@ function scorecardCardHtml(row, rosterList, isSample) {
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
       <div class="sc-sub">Day 2 &mdash; ${escapeHtml(formatDateNice(settings.Day2Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
       <div class="sc-teams">${teamNameHtml(names.A, settings.TeamAColor)} vs ${teamNameHtml(names.B, settings.TeamBColor)}</div>
-      ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
       ${frontSegment}
       ${backSegment}
       <p class="sc-note">&bull; marks a hole where that player gets a handicap stroke (&bull;&bull; = two strokes) &mdash; each player's dots use their own tee's Stroke Index (Red players use the "Red Handicap" row above, everyone else uses "Gold Handicap"). Best Ball covers the front 9 only; each Match Play row covers the back 9 only. Write "W" or "T" in the box for each row on every hole, then circle the winning team (or Tie) at the end of each 9.</p>
@@ -1218,7 +1234,6 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
       <div class="sc-title">${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')}</div>
       <div class="sc-sub">Day 1 &mdash; ${escapeHtml(formatDateNice(settings.Day1Date))} &nbsp;&middot;&nbsp; Match ${row.MatchNum} &nbsp;&middot;&nbsp; Start Hole: ${escapeHtml(row.StartHole || 'TBD')}</div>
       <div class="sc-teams">${teamNameHtml(names.A, settings.TeamAColor)} vs ${teamNameHtml(names.B, settings.TeamBColor)}</div>
-      ${row.PIN ? `<div class="sc-pin-badge">Scorekeeper PIN (backup): <strong>${escapeHtml(row.PIN)}</strong></div>` : ''}
       ${frontSegment}
       ${backSegment}
       <p class="sc-note">Front 9: Captain's Choice. Back 9: Modified Alternate Shot. No handicap strokes apply on Day 1 (Gold/Red Handicap rows are shown for reference only). Write "W" or "T" in the box for each team on every hole, then circle the winning team (or Tie) at the end of each 9.</p>
@@ -1318,14 +1333,13 @@ function printSegmentHtmlCompact(segLabel, instruction, startHole, endHole, star
   `;
 }
 
-function ccCardHeaderHtml(names, isSample, metaLine, pin) {
+function ccCardHeaderHtml(names, isSample, metaLine) {
   return `
     <div class="cc-header">
       <div>
         ${isSample ? '<span class="cc-sample-badge">SAMPLE</span> ' : ''}<span class="cc-teams">${teamNameHtml(names.A, settings.TeamAColor)} vs ${teamNameHtml(names.B, settings.TeamBColor)}</span>
         <div class="cc-meta">${metaLine}</div>
       </div>
-      ${pin ? `<div class="cc-pin">PIN ${escapeHtml(pin)}</div>` : ''}
     </div>
   `;
 }
@@ -1358,7 +1372,7 @@ function scorecardCardHtmlDay1Compact(row, rosterList, isSample) {
 
   return `
     <div class="cc-card">
-      ${ccCardHeaderHtml(names, isSample, metaLine, row.PIN)}
+      ${ccCardHeaderHtml(names, isSample, metaLine)}
       ${frontSegment}
       ${backSegment}
     </div>
@@ -1407,7 +1421,7 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
 
   return `
     <div class="cc-card">
-      ${ccCardHeaderHtml(names, isSample, metaLine, row.PIN)}
+      ${ccCardHeaderHtml(names, isSample, metaLine)}
       ${frontSegment}
       ${backSegment}
     </div>
