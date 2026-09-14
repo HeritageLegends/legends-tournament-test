@@ -587,6 +587,21 @@ function holesMatchServerRows(day, sentHoles, serverRows) {
 // remembered here (localStorage) so the same phone doesn't have to re-enter
 // it every time. This only gates the score-ENTRY UI — the Scoreboard tab is
 // unaffected and stays open/read-only to everyone regardless.
+// A PIN typed with a leading zero (e.g. "0007") can end up mismatching a
+// stored value that lost that zero somewhere upstream — most commonly a PIN
+// typed straight into the Google Sheet's Pairings tab instead of through
+// this app's own PIN box, where Sheets' own auto-formatting can silently
+// turn "0007" into the number 7 before this app ever reads it back (the
+// String(...) coercion elsewhere just stops that from crashing the page; it
+// can't restore a zero that's already gone). Treating two all-digit PINs as
+// the same whenever they're numerically equal — not just textually
+// identical — means a scorekeeper handed "0007" isn't locked out by that
+// kind of drift, however it happened.
+function pinsMatch(entered, required) {
+  if (!entered || !required) return false;
+  if (entered === required) return true;
+  return /^\d+$/.test(entered) && /^\d+$/.test(required) && Number(entered) === Number(required);
+}
 function pinStorageKey(day, matchNum) { return `legends_pin_${ENV}_${day}_${matchNum}`; }
 function getStoredPin(day, matchNum) {
   try { return localStorage.getItem(pinStorageKey(day, matchNum)); } catch (e) { return null; }
@@ -620,7 +635,7 @@ function matchIsUnlocked(day, matchNum, pairingRow) {
   // .trim() — this coercion keeps that from crashing the page either way.
   const requiredPin = String((pairingRow && pairingRow.PIN) || '').trim();
   if (!requiredPin) return true; // no PIN set for this match — open to anyone
-  return getStoredPin(day, matchNum) === requiredPin;
+  return pinsMatch(getStoredPin(day, matchNum), requiredPin);
 }
 
 document.getElementById('scDay').addEventListener('change', onScDayOrMatchChange);
@@ -780,11 +795,11 @@ function tryUnlockMatch(day, matchNum) {
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
   const requiredPin = String((pairingRow && pairingRow.PIN) || '').trim();
   const adminPin = String((settings && settings.AdminPIN) || '').trim();
-  if (adminPin && entered === adminPin) {
+  if (adminPin && pinsMatch(entered, adminPin)) {
     // The Admin PIN unlocks every match on this device, not just this one.
     setAdminUnlocked(true);
     renderScoringUI(day, matchNum);
-  } else if (entered && entered === requiredPin) {
+  } else if (entered && pinsMatch(entered, requiredPin)) {
     storePin(day, matchNum, entered);
     renderScoringUI(day, matchNum);
   } else {
