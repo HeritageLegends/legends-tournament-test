@@ -303,7 +303,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-10e';
+const LIVE_VERSION = '2026-09-14';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -659,7 +659,24 @@ function populateMatchDropdown() {
     sel.appendChild(opt);
   });
 }
-function onScDayOrMatchChange() { populateMatchDropdown(); onScMatchSelected(); }
+// Switching the Day dropdown used to silently reset the Match dropdown back
+// to Match 1 (populateMatchDropdown rebuilds it from scratch, and a rebuilt
+// <select> defaults to its first option) instead of staying on whatever
+// match number was already selected. Since a Scorekeeper PIN now unlocks one
+// match NUMBER across both days, that reset made switching to Day 2 look
+// like it demanded a second PIN — really it had quietly jumped to Match 1
+// (someone else's match, usually still locked), not asked twice for the same
+// one. Restoring the same match number here is what makes "enter it once"
+// actually hold across the Day tab.
+function onScDayOrMatchChange() {
+  const prevMatchNum = document.getElementById('scMatch').value;
+  populateMatchDropdown();
+  const sel = document.getElementById('scMatch');
+  if (prevMatchNum && Array.from(sel.options).some((o) => o.value === prevMatchNum)) {
+    sel.value = prevMatchNum;
+  }
+  onScMatchSelected();
+}
 async function onScMatchSelected() {
   const day = document.getElementById('scDay').value;
   const matchNum = document.getElementById('scMatch').value;
