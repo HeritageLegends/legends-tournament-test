@@ -343,6 +343,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 // course). Each is {hole: strokeIndex}.
 let settings = {}, roster = [], holeHC = { default: {}, red: {} };
 let pairings = { 1: [], 2: [] };
+let matchPins = []; // [{MatchNum, PIN}] x9 — one Scorekeeper PIN per match number, shared by both days
 let rosterByName = {}; // Name -> {HandicapIndex, Tee}
 
 function indexRoster() {
@@ -399,8 +400,8 @@ function normalizeWinner(w) {
   return (w === 'A' || w === 'B' || w === 'Half' || w === 'Conceded') ? w : 'pending';
 }
 async function loadShared() {
-  const [sRes, rRes, hRes, hRedRes, p1Res, p2Res] = await Promise.all([
-    apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getHoleHandicapsRed'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }),
+  const [sRes, rRes, hRes, hRedRes, p1Res, p2Res, pinsRes] = await Promise.all([
+    apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getHoleHandicapsRed'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }), apiGet('getMatchPins'),
   ]);
   if (sRes.success) { settings = sRes.data; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; applyTeamColorVars(); }
   if (rRes.success) { roster = rRes.data; indexRoster(); }
@@ -414,6 +415,7 @@ async function loadShared() {
   }
   if (p1Res.success) pairings['1'] = p1Res.data;
   if (p2Res.success) pairings['2'] = p2Res.data;
+  if (pinsRes.success) matchPins = pinsRes.data;
 }
 
 function teamNames() {
@@ -581,15 +583,17 @@ function holesMatchServerRows(day, sentHoles, serverRows) {
 }
 
 // ---- per-match PIN gate ----
-// A match's PIN (set by the admin in the Pairings table) is optional — blank
-// means anyone with this link can still enter that match's scores, same as
-// before this existed. When set, this device has to enter it once; it's then
-// remembered here (localStorage) so the same phone doesn't have to re-enter
-// it every time. This only gates the score-ENTRY UI — the Scoreboard tab is
+// A match's Scorekeeper PIN (set by the admin on the Scorekeeper PINs tab) is
+// optional — blank means anyone with this link can still enter that match's
+// scores, same as before this existed. It's one PIN per match NUMBER, shared
+// by both days, so entering it once unlocks that match on Day 1 and Day 2
+// both. When set, this device has to enter it once; it's then remembered
+// here (localStorage) so the same phone doesn't have to re-enter it every
+// time. This only gates the score-ENTRY UI — the Scoreboard tab is
 // unaffected and stays open/read-only to everyone regardless.
 // A PIN typed with a leading zero (e.g. "0007") can end up mismatching a
 // stored value that lost that zero somewhere upstream — most commonly a PIN
-// typed straight into the Google Sheet's Pairings tab instead of through
+// typed straight into the Google Sheet's MatchPins tab instead of through
 // this app's own PIN box, where Sheets' own auto-formatting can silently
 // turn "0007" into the number 7 before this app ever reads it back (the
 // String(...) coercion elsewhere just stops that from crashing the page; it
@@ -602,12 +606,18 @@ function pinsMatch(entered, required) {
   if (entered === required) return true;
   return /^\d+$/.test(entered) && /^\d+$/.test(required) && Number(entered) === Number(required);
 }
-function pinStorageKey(day, matchNum) { return `legends_pin_${ENV}_${day}_${matchNum}`; }
-function getStoredPin(day, matchNum) {
-  try { return localStorage.getItem(pinStorageKey(day, matchNum)); } catch (e) { return null; }
+// A match number's shared PIN, looked up from the MatchPins sheet — the same
+// value applies to that match number on both Day 1 and Day 2.
+function pinForMatch(matchNum) {
+  const row = matchPins.find((r) => String(r.MatchNum) === String(matchNum));
+  return row ? String(row.PIN || '').trim() : '';
 }
-function storePin(day, matchNum, pin) {
-  try { localStorage.setItem(pinStorageKey(day, matchNum), pin); } catch (e) {}
+function pinStorageKey(matchNum) { return `legends_pin_${ENV}_${matchNum}`; }
+function getStoredPin(matchNum) {
+  try { return localStorage.getItem(pinStorageKey(matchNum)); } catch (e) { return null; }
+}
+function storePin(matchNum, pin) {
+  try { localStorage.setItem(pinStorageKey(matchNum), pin); } catch (e) {}
 }
 // ---- admin bypass ----
 // Entering the same Admin PIN used to unlock the admin page (Settings →
@@ -627,15 +637,12 @@ function suspendPinsOn() {
   const v = settings && settings.SuspendScorePins;
   return v === true || v === 'TRUE' || v === 'true';
 }
-function matchIsUnlocked(day, matchNum, pairingRow) {
+function matchIsUnlocked(matchNum) {
   if (suspendPinsOn()) return true; // testing mode — Settings → Suspend PIN Requirement
   if (getAdminUnlocked()) return true;
-  // String(...) first: a PIN that's all digits (e.g. "0483") can come back from
-  // the Sheet as an actual number rather than text, and a number has no
-  // .trim() — this coercion keeps that from crashing the page either way.
-  const requiredPin = String((pairingRow && pairingRow.PIN) || '').trim();
+  const requiredPin = pinForMatch(matchNum);
   if (!requiredPin) return true; // no PIN set for this match — open to anyone
-  return pinsMatch(getStoredPin(day, matchNum), requiredPin);
+  return pinsMatch(getStoredPin(matchNum), requiredPin);
 }
 
 document.getElementById('scDay').addEventListener('change', onScDayOrMatchChange);
@@ -720,11 +727,10 @@ function renderScoringUI(day, matchNum) {
     document.getElementById('scStatusLines').innerHTML = '';
     return;
   }
-  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
-  if (!matchIsUnlocked(day, matchNum, pairingRow)) {
+  if (!matchIsUnlocked(matchNum)) {
     toggleEl.innerHTML = '';
     if (modeEl) modeEl.innerHTML = '';
-    renderPinLock(day, matchNum, pairingRow);
+    renderPinLock(day, matchNum);
     return;
   }
   if (dayIsLocked(day)) {
@@ -746,8 +752,8 @@ function renderScoringUI(day, matchNum) {
   } else {
     toggleEl.innerHTML = getAdminUnlocked()
       ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="exitAdminMode('${day}', '${matchNum}')">Exit Admin Mode</button>`
-      : (pairingRow && pairingRow.PIN
-          ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${day}', '${matchNum}')">Forget PIN</button>`
+      : (pinForMatch(matchNum)
+          ? `<button type="button" class="secondary" style="margin-left:auto;" onclick="lockMatch('${matchNum}')">Forget PIN</button>`
           : '');
   }
   if (modeEl) modeEl.innerHTML = scModeToggleHtml();
@@ -758,9 +764,9 @@ function renderScoringUI(day, matchNum) {
 // screen — for handing the phone to a different foursome, or if the wrong
 // code got saved. (If the admin changes a match's PIN, this device is
 // automatically re-locked next time it's selected — no need for this.)
-function lockMatch(day, matchNum) {
-  try { localStorage.removeItem(pinStorageKey(day, matchNum)); } catch (e) {}
-  renderScoringUI(day, matchNum);
+function lockMatch(matchNum) {
+  try { localStorage.removeItem(pinStorageKey(matchNum)); } catch (e) {}
+  renderScoringUI(document.getElementById('scDay').value, matchNum);
 }
 
 // Turns off this device's admin bypass (see matchIsUnlocked) — every match
@@ -773,7 +779,7 @@ function exitAdminMode(day, matchNum) {
 
 // Shown instead of the scoring UI when this match has a PIN set and this
 // device hasn't unlocked it yet.
-function renderPinLock(day, matchNum, pairingRow) {
+function renderPinLock(day, matchNum) {
   document.getElementById('scStatusLines').innerHTML = '';
   const wrap = document.getElementById('scGridWrap');
   wrap.innerHTML = `
@@ -792,15 +798,17 @@ function renderPinLock(day, matchNum, pairingRow) {
 }
 function tryUnlockMatch(day, matchNum) {
   const entered = document.getElementById('matchPinInput').value.trim();
-  const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
-  const requiredPin = String((pairingRow && pairingRow.PIN) || '').trim();
+  const requiredPin = pinForMatch(matchNum);
   const adminPin = String((settings && settings.AdminPIN) || '').trim();
   if (adminPin && pinsMatch(entered, adminPin)) {
     // The Admin PIN unlocks every match on this device, not just this one.
     setAdminUnlocked(true);
     renderScoringUI(day, matchNum);
-  } else if (entered && pinsMatch(entered, requiredPin)) {
-    storePin(day, matchNum, entered);
+  } else if (entered && requiredPin && pinsMatch(entered, requiredPin)) {
+    // One shared PIN per match number, covering both days — storing it once
+    // here unlocks this same match number on the other day too, no matter
+    // which day's screen it was typed into.
+    storePin(matchNum, entered);
     renderScoringUI(day, matchNum);
   } else {
     document.getElementById('pinError').textContent = 'Incorrect PIN — check with your foursome or the admin.';
@@ -1908,22 +1916,14 @@ function chooseScorekeeper() {
   document.getElementById('entryGatePin').hidden = false;
   document.getElementById('gatePinInput').focus();
 }
-// A foursome's PIN is commonly reused as-is for their Day 2 match (same
-// players, one PIN to remember for the whole weekend) — so the same PIN can
-// legitimately belong to two matches, one per day. This returns every match
-// (either day) whose PIN matches what was typed, checked across both days
-// since the scorekeeper hasn't told us which day they're on, only their
-// PIN — see submitGatePin, which unlocks all of them together rather than
-// just whichever one happens to be listed first.
-function findMatchesByPin(pin) {
-  const matches = [];
-  ['1', '2'].forEach((day) => {
-    (pairings[day] || []).forEach((row) => {
-      const requiredPin = String(row.PIN || '').trim();
-      if (requiredPin && pinsMatch(pin, requiredPin)) matches.push({ day, matchNum: String(row.MatchNum) });
-    });
+// A match's Scorekeeper PIN is one value per match number, shared by both
+// days, so this just looks up which match number (if any) has this PIN.
+function findMatchNumByPin(pin) {
+  const row = matchPins.find((r) => {
+    const requiredPin = String(r.PIN || '').trim();
+    return requiredPin && pinsMatch(pin, requiredPin);
   });
-  return matches;
+  return row ? String(row.MatchNum) : null;
 }
 async function submitGatePin() {
   const input = document.getElementById('gatePinInput');
@@ -1932,7 +1932,7 @@ async function submitGatePin() {
   if (!entered) { errEl.textContent = 'Enter your PIN, or tap "I don\'t have a PIN" below.'; return; }
   errEl.textContent = 'Checking…';
   input.disabled = true;
-  await sharedDataPromise; // pairings (and AdminPIN, via settings) may still be loading
+  await sharedDataPromise; // pairings/matchPins (and AdminPIN, via settings) may still be loading
   input.disabled = false;
   const adminPin = String((settings && settings.AdminPIN) || '').trim();
   if (adminPin && entered === adminPin) {
@@ -1943,20 +1943,17 @@ async function submitGatePin() {
     hideEntryGate();
     return;
   }
-  const matches = findMatchesByPin(entered);
-  if (!matches.length) {
+  const matchNum = findMatchNumByPin(entered);
+  if (!matchNum) {
     errEl.textContent = 'PIN not recognized — check with your foursome or the admin.';
     return;
   }
-  // Unlock every match this PIN belongs to (typically the same match number
-  // on both days) so switching to the other day's tab afterward drops
-  // straight into scoring instead of asking for the same PIN again — then
-  // land on the first one found (Day 1 preferred over Day 2, same as before).
-  matches.forEach((m) => storePin(m.day, m.matchNum, entered));
-  const match = matches[0];
-  document.getElementById('scDay').value = match.day;
+  // One shared PIN covers this match number on both Day 1 and Day 2 — store
+  // it once, then land on whichever day is currently selected (Day 1 by
+  // default), same as before.
+  storePin(matchNum, entered);
   populateMatchDropdown();
-  document.getElementById('scMatch').value = match.matchNum;
+  document.getElementById('scMatch').value = matchNum;
   await onScMatchSelected();
   hideEntryGate();
 }
