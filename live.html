@@ -56,6 +56,13 @@
   /* Rides on the same .wpick-row line as the win/tie/win buttons, as the
      4th button — styled green so it stands out as the "commit" action. */
   .hbh-save-next { flex: 1 1 140px; padding: 14px 6px; font-size: 0.9rem; font-weight: 700; line-height: 1.2; white-space: normal; border-radius: 8px; background: var(--green); color: #fff; border: none; cursor: pointer; }
+  /* Day 2 Individual Match Play (back 9) only: two matchup blocks (MP1, MP2)
+     render identically — neither's own button row carries the save button —
+     so both matchups look the same; this wraps the save button on its own
+     centered line below the second matchup instead. .hbh-save-next still
+     applies its usual styling, just not stretched to fill the row here. */
+  .hbh-save-standalone { display: flex; justify-content: center; margin-top: 12px; }
+  .hbh-save-standalone .hbh-save-next { flex: 0 1 auto; max-width: 320px; min-width: 220px; }
   .hbh-seglabel { text-align: center; font-weight: 800; color: var(--green-dark); font-size: 1.08rem; margin: 6px 0 12px; padding: 8px 10px; background: #e8f2ec; border: 1px solid #cfe3d7; border-radius: 8px; }
   /* 18-hole completion map above the pick buttons — click any dot to jump
      there. A hole with no result yet is grey; once a winner (or Tie) is
@@ -153,7 +160,7 @@
 
   /* ---- Direct hole-winner entry (replaces old gross-score inputs) ---- */
   .wpick-block { padding: 14px 4px; border-bottom: 1px solid var(--border); }
-  .wpick-block:last-child { border-bottom: none; }
+  .wpick-block:last-of-type { border-bottom: none; }
   .wpick-sides { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .wpick-side { font-weight: 600; flex: 1; }
   .wpick-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -451,32 +458,6 @@ function dayIsLocked(day) {
   const v = settings[day === '2' ? 'Day2Locked' : 'Day1Locked'];
   return v === true || v === 'TRUE' || v === 'true';
 }
-// YYYY-MM-DD in the device's own local time zone (not UTC — toISOString()
-// would roll back to the previous day for anyone west of UTC in the evening,
-// which is exactly the wrong direction for an on-site, same-day check).
-function localDateString(d) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-// Mirrors otherDayIsBlockedToday_ in Code.gs — the server enforces this on
-// every save regardless (so it can't be bypassed by an old cached page), but
-// checking it here too lets the UI show a clear message up front instead of
-// a scorekeeper filling in a whole hole's picks only to have the save fail.
-// Only kicks in once the admin has set BOTH tournament dates (Settings tab)
-// and today actually matches one of them — otherwise (before/after the
-// event, or setting things up ahead of time) nothing is blocked. The
-// existing "Suspend PIN Requirement" testing toggle also lifts this, since
-// that's already the app's one on/off switch for "we're just testing."
-function dayBlockedToday(day) {
-  if (suspendPinsOn()) return false;
-  const day1 = String((settings && settings.Day1Date) || '').trim();
-  const day2 = String((settings && settings.Day2Date) || '').trim();
-  if (!day1 || !day2) return false;
-  const today = localDateString(new Date());
-  if (today === day1 && String(day) === '2') return true;
-  if (today === day2 && String(day) === '1') return true;
-  return false;
-}
 function matchLabel(day, row) {
   const has = row.TeamA_P1 || row.TeamA_P2 || row.TeamB_P1 || row.TeamB_P2;
   if (!has) return `Match ${row.MatchNum} (not set up yet)`;
@@ -725,18 +706,6 @@ function renderScoringUI(day, matchNum) {
     return;
   }
   const pairingRow = pairings[day].find((r) => String(r.MatchNum) === String(matchNum));
-  if (dayBlockedToday(day)) {
-    toggleEl.innerHTML = '';
-    if (modeEl) modeEl.innerHTML = '';
-    document.getElementById('scStatusLines').innerHTML = '';
-    const otherDay = String(day) === '2' ? '1' : '2';
-    document.getElementById('scGridWrap').innerHTML = `
-      <div class="card" style="margin:0; background:#fbf3e4; border-color:var(--gold);">
-        <p class="hint" style="margin-top:0; color:#8a6300; font-weight:600;">Today is Day ${escapeHtml(otherDay)} of the tournament — Day ${escapeHtml(String(day))} scores can't be entered yet. Switch to the Day ${escapeHtml(otherDay)} tab above.</p>
-      </div>
-    `;
-    return;
-  }
   if (!matchIsUnlocked(day, matchNum, pairingRow)) {
     toggleEl.innerHTML = '';
     if (modeEl) modeEl.innerHTML = '';
@@ -1077,6 +1046,11 @@ function renderHoleByHole(day, matchNum) {
   // switched (e.g. Captain's Choice giving way to Modified Alternate Shot).
   const segLabel = (h === 1 || h === 10) ? `You are now playing ${segLabelPlain}` : segLabelPlain;
   const saveBtnHtml = `<button type="button" class="hbh-save-next" onclick="saveAndAdvance('${day}', '${matchNum}')">Save now and move to hole ${nextH}</button>`;
+  // Day 2 Individual Match Play (back 9) only: one Save covers both MP1 and
+  // MP2 at once (they're saved together, same as every other segment), so
+  // its own label says so explicitly rather than reading like it only
+  // covers the matchup it's visually closest to.
+  const saveBtnHtmlBothMatches = `<button type="button" class="hbh-save-next" onclick="saveAndAdvance('${day}', '${matchNum}')">Save results for both matches now and move to hole ${nextH}</button>`;
   // The dropdown just below already jumps straight to this match's own Start
   // Hole (see onScMatchSelected) — this line just says so in plain words,
   // for anyone who'd otherwise wonder why it's not showing hole 1.
@@ -1087,8 +1061,14 @@ function renderHoleByHole(day, matchNum) {
     if (h <= 9) {
       blocksHtml = teamWinnerBlockHtml('BestBallWinner', holeRow, h, teamWinLabel(names.A), teamWinLabel(names.B), saveBtnHtml, colors.A, colors.B);
     } else {
+      // Both matchups render with the same 3-button row (no extra button on
+      // either one), so MP1 and MP2 look identical — the save button gets
+      // its own centered line below the second matchup instead, labeled to
+      // say it covers both matches since it's not obviously tied to just
+      // the one it sits under.
       blocksHtml = matchupWinnerBlockHtml('MP1Winner', holeRow, h, pairingRow.MP1_TeamA, pairingRow.MP1_TeamB, null, colors.A, colors.B)
-        + matchupWinnerBlockHtml('MP2Winner', holeRow, h, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB, saveBtnHtml, colors.A, colors.B);
+        + matchupWinnerBlockHtml('MP2Winner', holeRow, h, pairingRow.MP2_TeamA, pairingRow.MP2_TeamB, null, colors.A, colors.B)
+        + `<div class="hbh-save-standalone">${saveBtnHtmlBothMatches}</div>`;
     }
   } else {
     blocksHtml = teamWinnerBlockHtml('Winner', holeRow, h, teamWinLabel(names.A), teamWinLabel(names.B), saveBtnHtml, colors.A, colors.B);
