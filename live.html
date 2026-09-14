@@ -1908,18 +1908,22 @@ function chooseScorekeeper() {
   document.getElementById('entryGatePin').hidden = false;
   document.getElementById('gatePinInput').focus();
 }
-// Same PIN can only belong to one match in normal use (each foursome gets
-// its own), so the first match found wins — checked across both days since
-// the scorekeeper hasn't told us which day they're on, only their PIN.
-function findMatchByPin(pin) {
-  for (const day of ['1', '2']) {
-    const rows = pairings[day] || [];
-    for (const row of rows) {
+// A foursome's PIN is commonly reused as-is for their Day 2 match (same
+// players, one PIN to remember for the whole weekend) — so the same PIN can
+// legitimately belong to two matches, one per day. This returns every match
+// (either day) whose PIN matches what was typed, checked across both days
+// since the scorekeeper hasn't told us which day they're on, only their
+// PIN — see submitGatePin, which unlocks all of them together rather than
+// just whichever one happens to be listed first.
+function findMatchesByPin(pin) {
+  const matches = [];
+  ['1', '2'].forEach((day) => {
+    (pairings[day] || []).forEach((row) => {
       const requiredPin = String(row.PIN || '').trim();
-      if (requiredPin && requiredPin === pin) return { day, matchNum: String(row.MatchNum) };
-    }
-  }
-  return null;
+      if (requiredPin && pinsMatch(pin, requiredPin)) matches.push({ day, matchNum: String(row.MatchNum) });
+    });
+  });
+  return matches;
 }
 async function submitGatePin() {
   const input = document.getElementById('gatePinInput');
@@ -1939,12 +1943,17 @@ async function submitGatePin() {
     hideEntryGate();
     return;
   }
-  const match = findMatchByPin(entered);
-  if (!match) {
+  const matches = findMatchesByPin(entered);
+  if (!matches.length) {
     errEl.textContent = 'PIN not recognized — check with your foursome or the admin.';
     return;
   }
-  storePin(match.day, match.matchNum, entered);
+  // Unlock every match this PIN belongs to (typically the same match number
+  // on both days) so switching to the other day's tab afterward drops
+  // straight into scoring instead of asking for the same PIN again — then
+  // land on the first one found (Day 1 preferred over Day 2, same as before).
+  matches.forEach((m) => storePin(m.day, m.matchNum, entered));
+  const match = matches[0];
   document.getElementById('scDay').value = match.day;
   populateMatchDropdown();
   document.getElementById('scMatch').value = match.matchNum;
