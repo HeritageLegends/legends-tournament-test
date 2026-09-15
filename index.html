@@ -1287,6 +1287,14 @@ const COMPACT_PRINT_CSS = `
   .cc-sheet:last-child { page-break-after: auto; }
   .cc-card { width: 11in; height: 4.25in; padding: 0.07in 0.26in; overflow: hidden; line-height: 1.05; }
   .cc-card.cc-top { border-bottom: 1px dashed #aaa; }
+  /* The Day 2 card's top-of-page header line was getting clipped when it
+     sits in the top slot (the bottom slot, and every Day 1 card, print
+     fine). Nudge its content down with a bit more top padding — taken from
+     the bottom padding rather than added on top of it, so the box stays
+     4.25in tall (box-sizing: border-box, above) and the extra room at the
+     top doesn't shrink the space available for content and risk clipping
+     something new at the bottom. */
+  .cc-card.cc-top.cc-day2 { padding-top: 0.16in; padding-bottom: 0; }
   .cc-sample-badge { display: inline-block; background: #fff3cd; color: #7a5b00; border: 1px solid #e6c866; border-radius: 3px; padding: 1px 6px; font-size: 6.5pt; font-weight: 700; letter-spacing: 0.03em; }
   .cc-header { display: flex; justify-content: space-between; align-items: flex-start; }
   .cc-teams { font-size: 11.5pt; font-weight: 700; }
@@ -1614,7 +1622,7 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
   const metaLine = `${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')} &middot; Day 2, ${escapeHtml(formatDateNice(settings.Day2Date))} &middot; Match ${row.MatchNum} &middot; Start Hole ${escapeHtml(row.StartHole || 'TBD')}`;
 
   return `
-    <div class="cc-card">
+    <div class="cc-card cc-day2">
       ${ccCardHeaderHtml(names, isSample, metaLine)}
       ${frontSegment}
       ${backSegment}
@@ -1632,7 +1640,11 @@ function openScorecardWindowCompact(cardHtmlArray) {
   const sheets = [];
   for (let i = 0; i < cardHtmlArray.length; i += 2) {
     const bottom = cardHtmlArray[i + 1] || '';
-    const top = bottom ? cardHtmlArray[i].replace('class="cc-card"', 'class="cc-card cc-top"') : cardHtmlArray[i];
+    // Match on the opening `class="cc-card` (no closing quote) so this still
+    // works on a Day 2 card, whose wrapper already carries a second class
+    // (cc-day2) — a strict 'class="cc-card"' match would silently fail to
+    // tag those as the top card at all.
+    const top = bottom ? cardHtmlArray[i].replace('class="cc-card', 'class="cc-card cc-top') : cardHtmlArray[i];
     sheets.push(`<div class="cc-sheet">${top}${bottom}</div>`);
   }
   win.document.write(`<!DOCTYPE html><html><head><title>Scorecards (Pro Shop Paper)</title><style>${COMPACT_PRINT_CSS}</style></head><body>
