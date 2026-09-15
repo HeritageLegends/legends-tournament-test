@@ -337,7 +337,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-15e';
+const ADMIN_VERSION = '2026-09-15f';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -1292,6 +1292,10 @@ const COMPACT_PRINT_CSS = `
   .cc-teams { font-size: 11.5pt; font-weight: 700; }
   .cc-meta { font-size: 7.3pt; color: #444; margin-top: 0; }
   .cc-segment { margin-top: 3px; }
+  /* Extra breathing room between the two segments (Front 9 / Back 9) — but
+     not above the first one, which already sits right under the card
+     header. */
+  .cc-segment + .cc-segment { margin-top: 11px; }
   .cc-seg-title { font-size: 7.6pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: #123c26; }
   .cc-seg-instr { text-transform: none; font-style: italic; font-weight: 400; color: #555; }
   table.cc-table { border-collapse: collapse; width: 100%; margin-top: 1px; font-size: 7.1pt; table-layout: fixed; }
