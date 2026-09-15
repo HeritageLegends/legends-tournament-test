@@ -344,7 +344,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-15b';
+const ADMIN_VERSION = '2026-09-15c';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -1306,6 +1306,7 @@ const COMPACT_PRINT_CSS = `
   table.cc-table th.cc-name, table.cc-table td.cc-name { text-align: left; padding: 0.5px 5px; font-weight: 600; width: 18%; }
   table.cc-table th.cc-tee-col, table.cc-table td.cc-tee-col { width: 9%; font-weight: 600; font-size: 6.3pt; white-space: nowrap; }
   table.cc-table th.cc-winner, table.cc-table td.cc-winner { width: 8.5%; font-weight: 600; vertical-align: middle; }
+  .cc-winner-instr { text-align: center; font-size: 6.2pt; font-weight: 700; line-height: 1.15; white-space: normal; }
   table.cc-table td.sc-hole-cell { position: relative; }
   tr.cc-meta-row td { font-weight: 600; background: #f2f2f2; font-size: 6.6pt; }
   tr.cc-tie-row td { font-size: 6pt; color: #555; font-style: italic; padding-top: 0; padding-bottom: 0; line-height: 0.85; }
@@ -1332,7 +1333,7 @@ function scorecardCardHtml(row, rosterList, isSample) {
   rosterList = rosterList || roster;
   const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
   const startHoleNum = startHoleNumberOf(row.StartHole);
-  const instruction = "Enter each player's score per hole and circle the net-low score that wins the hole";
+  const instruction = 'Either enter scores per hole and circle the winning score (low net) or write W or T per match. Circle the match winner in the right-hand column -->';
 
   const bestBallRowHtml = (name, teamName, color, startHole, endHole) => {
     const nameCell = `${lastNameOrUnassigned(name)} <span class="sc-players">&mdash; ${escapeHtml(teamName)}</span>`;
@@ -1484,7 +1485,7 @@ function ccSpacerRowHtml(extraCol) {
 // "Winner" column at the right — each entry row already carries its own name
 // there (via the row-building functions below), so all a scorekeeper does is
 // circle whichever name actually won once every hole in that 9 is filled in.
-function printSegmentHtmlCompact(segLabel, instruction, startHole, endHole, startHoleNum, rowsHtml, extraColHeader) {
+function printSegmentHtmlCompact(segLabel, instruction, startHole, endHole, startHoleNum, rowsHtml, extraColHeader, suppressAutoSuffix) {
   const hasPar = holeHandicaps.some((h) => h.Par !== '' && h.Par != null);
   let holeHeaderCells = '', parCells = '', hcpCells = '', hcpRedCells = '';
   for (let h = startHole; h <= endHole; h++) {
@@ -1498,15 +1499,22 @@ function printSegmentHtmlCompact(segLabel, instruction, startHole, endHole, star
   }
   const extraTh = extraColHeader ? `<th class="cc-tee-col">${escapeHtml(extraColHeader)}</th>` : '';
   const extraTd = extraColHeader ? '<td class="cc-tee-col"></td>' : '';
+  // The header cell and the reference rows above the real entry rows (Par,
+  // if shown, plus Gold/Red Hcp) don't carry a per-row winner value, so
+  // instead of a "Winner" label followed by blank cells, one merged cell
+  // spans all of them with a single centered instruction — the entry/tie
+  // rows below still get their own real cc-winner cell each, unaffected.
+  const winnerHeaderRowspan = hasPar ? 4 : 3;
+  const instrText = suppressAutoSuffix ? escapeHtml(instruction) : `${escapeHtml(instruction)}, then circle the winner &rarr;`;
   return `
     <div class="cc-segment">
-      <div class="cc-seg-title">${escapeHtml(segLabel)} <span class="cc-seg-instr">&mdash; ${escapeHtml(instruction)}, then circle the winner &rarr;</span></div>
+      <div class="cc-seg-title">${escapeHtml(segLabel)} <span class="cc-seg-instr">&mdash; ${instrText}</span></div>
       <table class="cc-table">
-        <thead><tr><th class="cc-name">Hole</th>${extraTh}${holeHeaderCells}<th class="cc-winner">Winner</th></tr></thead>
+        <thead><tr><th class="cc-name">Hole</th>${extraTh}${holeHeaderCells}<th class="cc-winner cc-winner-instr" rowspan="${winnerHeaderRowspan}">Circle the Winner Below</th></tr></thead>
         <tbody>
-          ${hasPar ? `<tr class="cc-meta-row"><td class="cc-name">Par</td>${extraTd}${parCells}<td class="cc-winner"></td></tr>` : ''}
-          <tr class="cc-meta-row"><td class="cc-name">Gold Hcp</td>${extraTd}${hcpCells}<td class="cc-winner"></td></tr>
-          <tr class="cc-meta-row"><td class="cc-name">Red Hcp</td>${extraTd}${hcpRedCells}<td class="cc-winner"></td></tr>
+          ${hasPar ? `<tr class="cc-meta-row"><td class="cc-name">Par</td>${extraTd}${parCells}</tr>` : ''}
+          <tr class="cc-meta-row"><td class="cc-name">Gold Hcp</td>${extraTd}${hcpCells}</tr>
+          <tr class="cc-meta-row"><td class="cc-name">Red Hcp</td>${extraTd}${hcpRedCells}</tr>
           ${rowsHtml}
         </tbody>
       </table>
@@ -1572,7 +1580,7 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
   rosterList = rosterList || roster;
   const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
   const startHoleNum = startHoleNumberOf(row.StartHole);
-  const instruction = 'Enter each score, circle the net-low winner per hole';
+  const instruction = 'Either enter scores per hole and circle the winning score (low net) or write W or T per match. Circle the match winner in the right-hand column -->';
 
   // Best Ball has one winner per team, not per player, so the Winner cell is
   // passed in already built — a single rowspan="2" cell on that team's first
@@ -1602,8 +1610,8 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
     ccSpacerRowHtml(true) +
     matchPlayRowHtml(row.TeamA_P2, names.A, settings.TeamAColor, 10, 18) + ccTieRowHtml('Tie', true) + matchPlayRowHtml(row.TeamB_P2, names.B, settings.TeamBColor, 10, 18);
 
-  const frontSegment = printSegmentHtmlCompact('Front 9: Best Ball', instruction, 1, 9, startHoleNum, frontRows, 'Tees/Strokes');
-  const backSegment = printSegmentHtmlCompact('Back 9: Individual Match Play', instruction, 10, 18, startHoleNum, backRows, 'Tees/Strokes');
+  const frontSegment = printSegmentHtmlCompact('Front 9: Best Ball', instruction, 1, 9, startHoleNum, frontRows, 'Tees/Strokes', true);
+  const backSegment = printSegmentHtmlCompact('Back 9: Individual Match Play', instruction, 10, 18, startHoleNum, backRows, 'Tees/Strokes', true);
   const metaLine = `${escapeHtml(settings.TournamentName || 'Heritage Legends Tournament')} &middot; Day 2, ${escapeHtml(formatDateNice(settings.Day2Date))} &middot; Match ${row.MatchNum} &middot; Start Hole ${escapeHtml(row.StartHole || 'TBD')}`;
 
   return `
