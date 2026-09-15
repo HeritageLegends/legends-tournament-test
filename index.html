@@ -344,7 +344,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-15';
+const ADMIN_VERSION = '2026-09-15b';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -1257,7 +1257,7 @@ const PRINT_CSS = `
      score, with a small dot pinned to its upper-right corner on any hole
      where that player's tee/handicap earns a stroke there. */
   table.sc-table td.sc-hole-cell { position: relative; }
-  .sc-stroke-dot { position: absolute; top: 1px; right: 2px; font-size: 0.6em; line-height: 1; letter-spacing: -1px; color: #b3261e; }
+  .sc-stroke-dot { position: absolute; top: 0px; right: 2px; font-size: 1.05em; font-weight: 700; line-height: 1; letter-spacing: -1px; color: #b3261e; }
   .sc-note { font-size: 0.78rem; color: #555; margin-top: 10px; }
   .sc-sample-badge { display: inline-block; background: #fff3cd; color: #7a5b00; border: 1px solid #e6c866; border-radius: 4px; padding: 3px 10px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em; margin-bottom: 8px; }
   .print-bar { margin-bottom: 20px; }
@@ -1305,7 +1305,7 @@ const COMPACT_PRINT_CSS = `
   table.cc-table th, table.cc-table td { border: 1px solid #999; padding: 0.5px 2px; text-align: center; }
   table.cc-table th.cc-name, table.cc-table td.cc-name { text-align: left; padding: 0.5px 5px; font-weight: 600; width: 18%; }
   table.cc-table th.cc-tee-col, table.cc-table td.cc-tee-col { width: 9%; font-weight: 600; font-size: 6.3pt; white-space: nowrap; }
-  table.cc-table th.cc-winner, table.cc-table td.cc-winner { width: 8.5%; font-weight: 600; }
+  table.cc-table th.cc-winner, table.cc-table td.cc-winner { width: 8.5%; font-weight: 600; vertical-align: middle; }
   table.cc-table td.sc-hole-cell { position: relative; }
   tr.cc-meta-row td { font-weight: 600; background: #f2f2f2; font-size: 6.6pt; }
   tr.cc-tie-row td { font-size: 6pt; color: #555; font-style: italic; padding-top: 0; padding-bottom: 0; line-height: 0.85; }
@@ -1317,7 +1317,7 @@ const COMPACT_PRINT_CSS = `
   .sc-tee { font-weight: 400; color: #666; font-size: 0.9em; }
   .sc-players { font-weight: 400; font-size: 0.88em; }
   .sc-start-hole { background: #fff176; }
-  .sc-stroke-dot { position: absolute; top: 0; right: 1px; font-size: 5.5pt; line-height: 1; letter-spacing: -1px; color: #b3261e; }
+  .sc-stroke-dot { position: absolute; top: 0; right: 1px; font-size: 8.5pt; font-weight: 700; line-height: 1; letter-spacing: -1px; color: #b3261e; }
   .print-bar { margin-bottom: 12px; padding: 10px; }
   .print-bar button { font-size: 0.95rem; padding: 8px 16px; cursor: pointer; }
   @media print { .print-bar { display: none; } }
@@ -1574,9 +1574,13 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
   const startHoleNum = startHoleNumberOf(row.StartHole);
   const instruction = 'Enter each score, circle the net-low winner per hole';
 
-  const bestBallRowHtml = (name, teamName, color, startHole, endHole) => {
+  // Best Ball has one winner per team, not per player, so the Winner cell is
+  // passed in already built — a single rowspan="2" cell on that team's first
+  // player row (carrying the team name once) and an empty string on the
+  // second row, rather than repeating the team name on both rows.
+  const bestBallRowHtml = (name, teamName, color, startHole, endHole, winnerCellHtml) => {
     const nameCell = `${lastNameOrUnassigned(name)} <span class="sc-players">&mdash; ${escapeHtml(teamName)}</span>`;
-    return `<tr><td class="cc-name"${teamCellStyleAttr(color)}>${nameCell}</td><td class="cc-tee-col">${teeStrokesLabel(name, rosterList)}</td>${scoreCellsWithDotsHtml(name, rosterList, startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
+    return `<tr><td class="cc-name"${teamCellStyleAttr(color)}>${nameCell}</td><td class="cc-tee-col">${teeStrokesLabel(name, rosterList)}</td>${scoreCellsWithDotsHtml(name, rosterList, startHole, endHole, startHoleNum)}${winnerCellHtml}</tr>`;
   };
   const matchPlayRowHtml = (name, teamName, color, startHole, endHole) => {
     const nameCell = `${lastNameOrUnassigned(name)} <span class="sc-players">&mdash; ${escapeHtml(teamName)}</span>`;
@@ -1584,9 +1588,11 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
   };
 
   const frontRows =
-    bestBallRowHtml(row.TeamA_P1, names.A, settings.TeamAColor, 1, 9) + bestBallRowHtml(row.TeamA_P2, names.A, settings.TeamAColor, 1, 9) +
+    bestBallRowHtml(row.TeamA_P1, names.A, settings.TeamAColor, 1, 9, `<td class="cc-winner" rowspan="2">${escapeHtml(names.A)}</td>`) +
+    bestBallRowHtml(row.TeamA_P2, names.A, settings.TeamAColor, 1, 9, '') +
     ccTieRowHtml('Tie', true) +
-    bestBallRowHtml(row.TeamB_P1, names.B, settings.TeamBColor, 1, 9) + bestBallRowHtml(row.TeamB_P2, names.B, settings.TeamBColor, 1, 9);
+    bestBallRowHtml(row.TeamB_P1, names.B, settings.TeamBColor, 1, 9, `<td class="cc-winner" rowspan="2">${escapeHtml(names.B)}</td>`) +
+    bestBallRowHtml(row.TeamB_P2, names.B, settings.TeamBColor, 1, 9, '');
   // Each Individual Match Play pairing (A1 vs B1, A2 vs B2) stays tight —
   // just the thin Tie row between its own two competitors — but a visible
   // gap (ccSpacerRowHtml) separates the two pairings from each other, so the
