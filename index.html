@@ -312,18 +312,11 @@
           <button class="primary" onclick="printScorecards()">Print</button>
           <button class="secondary" onclick="printSampleScorecard()">Preview Sample Scorecard</button>
         </div>
-        <label style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:0.9rem;">
-          <input type="checkbox" id="printDetailedToggle">
-          Detailed scorecards (one match per page — the older, larger layout, instead of the pro shop's
-          two-cards-per-11&Prime;&times;8.5&Prime;-sheet paper)
-        </label>
         <p class="hint">Haven't set that day's pairings yet? "Preview Sample Scorecard" shows the layout
           with made-up players so you can check it over (and see your Hole Handicaps table reflected in
-          it, for Day 2) before real teams are assembled. Pro shop paper is the default for both buttons —
-          front 9 and back 9 stacked on one 11&Prime;&times;4.25&Prime; card, with a narrow Winner column
-          at the right of each table instead of a separate "Circle Winning Team" box, since there's no
-          room for one. Check "Detailed scorecards" above to switch both buttons back to the older
-          one-match-per-page layout with the full-size side-by-side Circle Winning Team box.</p>
+          it, for Day 2) before real teams are assembled. Both buttons print the pro shop paper layout —
+          front 9 and back 9 stacked on one 11&Prime;&times;4.25&Prime; card, two cards per
+          11&Prime;&times;8.5&Prime; sheet, with a narrow Winner column at the right of each table.</p>
         <div id="printStatus" class="status"></div>
       </div>
     </section>
@@ -344,7 +337,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-15c';
+const ADMIN_VERSION = '2026-09-15e';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -1309,12 +1302,12 @@ const COMPACT_PRINT_CSS = `
   .cc-winner-instr { text-align: center; font-size: 6.2pt; font-weight: 700; line-height: 1.15; white-space: normal; }
   table.cc-table td.sc-hole-cell { position: relative; }
   tr.cc-meta-row td { font-weight: 600; background: #f2f2f2; font-size: 6.6pt; }
-  tr.cc-tie-row td { font-size: 6pt; color: #555; font-style: italic; padding-top: 0; padding-bottom: 0; line-height: 0.85; }
-  /* Entry rows (not a meta/reference row, not a Tie label row) are where W/T
-     actually gets written by hand — a bit more breathing room than the
-     reference rows above them, since there's headroom to spare. */
-  table.cc-table tbody tr:not(.cc-meta-row):not(.cc-tie-row) td { padding: 3.5px 2px; }
-  table.cc-table tbody tr:not(.cc-meta-row):not(.cc-tie-row) td.cc-name { padding: 3.5px 5px; }
+  tr.cc-tie-row td { font-size: 6pt; color: #555; font-style: italic; }
+  /* Entry rows (not a meta/reference row) are where a score actually gets
+     written by hand — the Tie row between two entry rows gets the same
+     padding so it reads as the same row height, not a squeezed-in divider. */
+  table.cc-table tbody tr:not(.cc-meta-row) td { padding: 3.5px 2px; }
+  table.cc-table tbody tr:not(.cc-meta-row) td.cc-name { padding: 3.5px 5px; }
   .sc-tee { font-weight: 400; color: #666; font-size: 0.9em; }
   .sc-players { font-weight: 400; font-size: 0.88em; }
   .sc-start-hole { background: #fff176; }
@@ -1417,7 +1410,7 @@ function scorecardCardHtmlDay1(row, rosterList, isSample) {
 // otherwise), but the players and their handicaps are fictional.
 function printSampleScorecard() {
   const day = document.getElementById('printDaySelect').value;
-  const compact = !document.getElementById('printDetailedToggle').checked;
+  const compact = true; // pro shop paper is now the only print layout
   let cardHtml;
   if (day === '1') {
     const sampleRosterDay1 = [
@@ -1506,12 +1499,16 @@ function printSegmentHtmlCompact(segLabel, instruction, startHole, endHole, star
   // rows below still get their own real cc-winner cell each, unaffected.
   const winnerHeaderRowspan = hasPar ? 4 : 3;
   const instrText = suppressAutoSuffix ? escapeHtml(instruction) : `${escapeHtml(instruction)}, then circle the winner &rarr;`;
+  // The header row and the meta rows it spans into all live in one <tbody>
+  // (not a separate <thead>) — a rowspan from a thead cell into tbody rows
+  // isn't reliably honored by the print engine, so keeping them in the same
+  // row group is what actually makes the merged cell span all four rows.
   return `
     <div class="cc-segment">
       <div class="cc-seg-title">${escapeHtml(segLabel)} <span class="cc-seg-instr">&mdash; ${instrText}</span></div>
       <table class="cc-table">
-        <thead><tr><th class="cc-name">Hole</th>${extraTh}${holeHeaderCells}<th class="cc-winner cc-winner-instr" rowspan="${winnerHeaderRowspan}">Circle the Winner Below</th></tr></thead>
         <tbody>
+          <tr><th class="cc-name">Hole</th>${extraTh}${holeHeaderCells}<th class="cc-winner cc-winner-instr" rowspan="${winnerHeaderRowspan}">Circle the Winner Below</th></tr>
           ${hasPar ? `<tr class="cc-meta-row"><td class="cc-name">Par</td>${extraTd}${parCells}</tr>` : ''}
           <tr class="cc-meta-row"><td class="cc-name">Gold Hcp</td>${extraTd}${hcpCells}</tr>
           <tr class="cc-meta-row"><td class="cc-name">Red Hcp</td>${extraTd}${hcpRedCells}</tr>
@@ -1573,9 +1570,7 @@ function scorecardCardHtmlDay1Compact(row, rosterList, isSample) {
 // give every player their own line (grouped by team on the front 9, by
 // matchup on the back 9), each with its own Tees/Strokes value and per-hole
 // score-entry boxes carrying a stroke dot where one applies. The Winner
-// column keeps carrying the team name on the Best Ball rows and that row's
-// own player's last name on the Match Play rows, since that segment is
-// genuinely player-vs-player.
+// column carries the team name on every row, Best Ball and Match Play alike.
 function scorecardCardHtmlCompact(row, rosterList, isSample) {
   rosterList = rosterList || roster;
   const names = { A: settings.TeamAName || 'Team A', B: settings.TeamBName || 'Team B' };
@@ -1592,7 +1587,7 @@ function scorecardCardHtmlCompact(row, rosterList, isSample) {
   };
   const matchPlayRowHtml = (name, teamName, color, startHole, endHole) => {
     const nameCell = `${lastNameOrUnassigned(name)} <span class="sc-players">&mdash; ${escapeHtml(teamName)}</span>`;
-    return `<tr><td class="cc-name"${teamCellStyleAttr(color)}>${nameCell}</td><td class="cc-tee-col">${teeStrokesLabel(name, rosterList)}</td>${scoreCellsWithDotsHtml(name, rosterList, startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(lastName(name))}</td></tr>`;
+    return `<tr><td class="cc-name"${teamCellStyleAttr(color)}>${nameCell}</td><td class="cc-tee-col">${teeStrokesLabel(name, rosterList)}</td>${scoreCellsWithDotsHtml(name, rosterList, startHole, endHole, startHoleNum)}<td class="cc-winner">${escapeHtml(teamName)}</td></tr>`;
   };
 
   const frontRows =
@@ -1671,7 +1666,7 @@ async function ensurePinsForPrint(matchNums) {
 async function printScorecards() {
   const day = document.getElementById('printDaySelect').value;
   const sel = document.getElementById('printMatchSelect').value;
-  const compact = !document.getElementById('printDetailedToggle').checked;
+  const compact = true; // pro shop paper is now the only print layout
   if (!sel) { showStatus('printStatus', false, `No Day ${day} matches set up yet.`); return; }
   const all = (pairings[day] || []).filter(hasPlayers);
   let rows = sel === 'all' ? all : all.filter((r) => String(r.MatchNum) === sel);
