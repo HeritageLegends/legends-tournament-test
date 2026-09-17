@@ -195,6 +195,7 @@
       <div class="card">
         <h2>Roster</h2>
         <p class="hint">Add every player and which team they're on. Handicap Index and Tee are used for Day 2 net scoring — fill them in whenever you have them, they're not required to set up pairings. <strong>Course Handicap</strong> is calculated automatically from those two (Red: Slope 111 / Rating 64.1; Gold: Slope 120 / Rating 67.1; Par 72 both) and is what's actually used for strokes on scorecards and during matches — it's read-only here, just type in Handicap Index and Tee and it fills itself in. Check <strong>Scorekeeper?</strong> for every volunteer willing to keep score for their own match — once checked here, the Day 1/Day 2 Pairings tables will flag any match whose four players don't include at least one.</p>
+        <p class="hint">The number of matches on the Day 1/Day 2 Pairings tabs and the Scorekeeper PINs tab is kept in sync with this roster automatically: it's always (Team A size)/2, so adding or removing 4 players (2 per team) adds or removes one match the moment you hit Save Roster below. Growing adds a new blank match at the end for you to fill in; shrinking only removes a trailing match that has no players in it yet — if the match that would need to go still has players assigned, you'll be told to clear them first.</p>
         <table id="rosterTable">
           <thead>
             <tr>
@@ -223,7 +224,7 @@
     <section id="tab-day1" class="tab-panel" hidden>
       <div class="card">
         <h2>Day 1 Pairings <span class="placeholder-badge">Front 9: Captain's Choice · Back 9: Mod. Alt Shot</span></h2>
-        <p class="hint">Each match is 2 players per team. Use placeholder matchups now — everything here is editable later once captains set real pairings. Start Hole accepts plain text, so if the pro shop doubles up a hole for the shotgun (two groups starting from the same tee, a few minutes apart), enter it as e.g. "18a" and "18b" — this is just for the pairing sheet/scorecard and doesn't affect any scoring.</p>
+        <p class="hint">Each match is 2 players per team. Use placeholder matchups now — everything here is editable later once captains set real pairings. Start Hole accepts plain text, so if the pro shop doubles up a hole for the shotgun (two groups starting from the same tee, a few minutes apart), enter it as e.g. "18a" and "18b" — this is just for the pairing sheet/scorecard, but it does drive one thing besides display: Live Scoring uses each match's Start Hole to work out who's the last group to play holes 5, 8, 12 and 17 that day, and pops up a reminder for that match's scorekeeper to collect the Closest to the Pin marker once they post that hole's result — so keep Start Hole accurate for every match, not just for show.</p>
         <p id="day1SkSummary" class="hint" style="font-weight:600;"></p>
         <table>
           <thead>
@@ -243,7 +244,7 @@
     <section id="tab-day2" class="tab-panel" hidden>
       <div class="card">
         <h2>Day 2 Pairings <span class="placeholder-badge">Front 9: Best Ball · Back 9: Individual Match Play</span></h2>
-        <p class="hint">Best Ball uses the same 2-vs-2 foursome as the match below. For the back-nine Individual Match Play, pick which player from each team faces which — defaults to Player 1 vs Player 1 and Player 2 vs Player 2. Start Hole accepts plain text, so a doubled-up shotgun hole can be entered as e.g. "18a" and "18b" — display only, doesn't affect scoring.</p>
+        <p class="hint">Best Ball uses the same 2-vs-2 foursome as the match below. For the back-nine Individual Match Play, pick which player from each team faces which — defaults to Player 1 vs Player 1 and Player 2 vs Player 2. Start Hole accepts plain text, so a doubled-up shotgun hole can be entered as e.g. "18a" and "18b". Besides display, Start Hole is also what Live Scoring uses to figure out who's the last group to play holes 5, 8, 12 and 17 that day, popping up a reminder for that match's scorekeeper to collect the Closest to the Pin marker once they post that hole's result — so keep it accurate for every match.</p>
         <p id="day2SkSummary" class="hint" style="font-weight:600;"></p>
         <table>
           <thead>
@@ -770,6 +771,96 @@ function removeRosterRow(idx) {
   renderRoster();
 }
 
+// ====================== MATCH COUNT (kept in sync with the Roster) ======================
+// Every match is a 2-vs-2 foursome (2 players from each team), so the number
+// of matches the roster actually supports is (Team A size)/2, which should
+// always equal (Team B size)/2 too since players are added/removed in groups
+// of 4 (2 per team) to keep the teams even. Math.min guards against a
+// roster that's momentarily uneven (e.g. only one team's players have been
+// updated so far) — it never invents more matches than either team can
+// actually fill two players into.
+function targetMatchCountFromRoster() {
+  const a = rosterNamesForTeam('A').length;
+  const b = rosterNamesForTeam('B').length;
+  return Math.floor(Math.min(a, b) / 2);
+}
+
+function blankPairingRow(day, matchNum) {
+  return (day === '2' || day === 2)
+    ? { MatchNum: matchNum, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '', MP1_TeamA: '', MP1_TeamB: '', MP2_TeamA: '', MP2_TeamB: '', MPSwapped: false }
+    : { MatchNum: matchNum, TeamA_P1: '', TeamA_P2: '', TeamB_P1: '', TeamB_P2: '', StartHole: '' };
+}
+
+// Grows or shrinks pairings[day] to exactly `target` rows. Growing appends
+// fresh blank match rows at the end (Match N+1, N+2, ...) — the admin fills
+// in real players afterward on the Pairings tab, same as any other blank
+// match. Shrinking only ever removes rows from the END, and only ones with
+// no player in any of the 4 slots — a match that already has real pairing
+// data is left alone rather than silently discarded. Returns the match
+// number(s) it wasn't able to remove, if any, so the caller can tell the
+// admin about them.
+function reconcilePairingCount(day, target) {
+  const rows = pairings[day];
+  const blocked = [];
+  while (rows.length < target) rows.push(blankPairingRow(day, rows.length + 1));
+  while (rows.length > target) {
+    const last = rows[rows.length - 1];
+    const isBlank = !last.TeamA_P1 && !last.TeamA_P2 && !last.TeamB_P1 && !last.TeamB_P2;
+    if (!isBlank) { blocked.push(last.MatchNum); break; }
+    rows.pop();
+  }
+  return blocked;
+}
+
+function reconcileMatchPinCount(target) {
+  while (matchPins.length < target) matchPins.push({ MatchNum: matchPins.length + 1, PIN: '' });
+  while (matchPins.length > target) matchPins.pop();
+}
+
+// Runs right after a successful Save Roster: recomputes how many matches the
+// roster now supports and grows/shrinks Day 1 Pairings, Day 2 Pairings, and
+// Scorekeeper PINs to match, saving whichever of those three actually
+// changed length. Returns a short sentence describing what happened (or ''
+// if the match count didn't change), for saveRoster to append to its own
+// "Saved N players" status message.
+async function reconcileMatchCountFromRoster() {
+  const target = targetMatchCountFromRoster();
+  const before1 = pairings['1'].length;
+  const before2 = pairings['2'].length;
+  const blocked1 = reconcilePairingCount('1', target);
+  const blocked2 = reconcilePairingCount('2', target);
+  const effectiveTarget = Math.max(pairings['1'].length, pairings['2'].length);
+  const beforePins = matchPins.length;
+  reconcileMatchPinCount(effectiveTarget);
+
+  const saves = [];
+  if (pairings['1'].length !== before1) {
+    saves.push(apiPost('savePairings', { day: '1', pairings: JSON.stringify(pairings['1']) }).then((res) => { if (res.success) pairings['1'] = res.data; }));
+  }
+  if (pairings['2'].length !== before2) {
+    saves.push(apiPost('savePairings', { day: '2', pairings: JSON.stringify(pairings['2']) }).then((res) => { if (res.success) pairings['2'] = res.data; }));
+  }
+  if (matchPins.length !== beforePins) {
+    saves.push(apiPost('saveMatchPins', { matchPins: JSON.stringify(matchPins) }).then((res) => { if (res.success) matchPins = res.data; }));
+  }
+  if (saves.length) await Promise.all(saves);
+
+  renderPairings('1');
+  renderPairings('2');
+  renderMatchPins();
+  populatePrintMatchSelect();
+
+  const blockedNums = Array.from(new Set(blocked1.concat(blocked2)));
+  if (blockedNums.length) {
+    const plural = blockedNums.length > 1;
+    return ` The roster now supports ${target} match${target === 1 ? '' : 'es'}, but Match ${blockedNums.join(' and ')} still ${plural ? 'have' : 'has'} players assigned — clear ${plural ? 'their' : 'its'} players on the Day 1/Day 2 Pairings tabs, then save the roster again to finish.`;
+  }
+  if (pairings['1'].length !== before1 || pairings['2'].length !== before2) {
+    return ` Match count updated to ${effectiveTarget} (was ${Math.max(before1, before2)}) on the Pairings and Scorekeeper PINs tabs.`;
+  }
+  return '';
+}
+
 async function saveRoster() {
   const btn = document.getElementById('saveRosterBtn');
   const originalLabel = btn.textContent;
@@ -779,7 +870,8 @@ async function saveRoster() {
     if (res.success) {
       roster = res.data;
       renderRoster();
-      showStatus('rosterStatus', true, `Saved ${roster.length} players.`);
+      const matchNote = await reconcileMatchCountFromRoster();
+      showStatus('rosterStatus', true, `Saved ${roster.length} players.` + matchNote);
       refreshPairingDropdownSources();
       flashSavedButton(btn, originalLabel);
     } else {

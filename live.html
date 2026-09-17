@@ -513,6 +513,73 @@ let concedeBannerFor = null;
 // for any match that's still complete, which is fine (there's nothing left
 // to accidentally re-enter once every hole is final).
 let acceptedMatches = new Set();
+
+// ---- CLOSEST TO THE PIN: placard pickup alert ----
+// Placards sit on the 4 par-3s (5, 8, 12, 17); whichever group plays a given
+// par-3 LAST that day is the one that should collect it and drop it at the
+// pro shop. On a shotgun start every group plays 18 holes starting from its
+// own Start Hole and wrapping back around, so the group that plays hole T
+// last is whichever group's Start Hole is the very next one actually used,
+// going forward from T (wrapping 18 -> 1) — that next hole is the START of
+// their day, which makes T the END of it (their 18th hole played). This
+// works for any shotgun arrangement, including one that skips holes entirely
+// (not every hole has a group teeing off there) and one with a doubled-up
+// tee (e.g. "18a"/"18b" both starting on 18 a few minutes apart) — in the
+// doubled-up case both matches come back as responsible, which just means
+// the alert can pop up for either.
+const CLOSEST_TO_PIN_HOLES = [5, 8, 12, 17];
+// Fires at most once per (day, matchNum, hole) per page load, even if that
+// hole's result gets saved again later (a correction, a retried autosave) —
+// keyed 'day_matchNum_hole'. Plain in-memory state, not persisted; a fresh
+// page load can show it again, which is fine since it only pops up for
+// whichever match is actually responsible, when it actually completes that
+// hole.
+let placardAlerted = new Set();
+function ctpResponsibleMatchNums(day, targetHole) {
+  const starts = (pairings[day] || [])
+    .filter((r) => hasPlayersLb(r) && r.StartHole)
+    .map((r) => ({ matchNum: String(r.MatchNum), start: startHoleNumberOf(r.StartHole) }))
+    .filter((x) => x.start !== null);
+  if (!starts.length) return [];
+  // Steps forward from targetHole to reach start hole s (1..18, never 0 —
+  // a group starting ON targetHole plays it FIRST, not last, so it's
+  // deliberately the worst-ranked candidate, not the best).
+  const distForward = (s) => ((s - targetHole - 1 + 18) % 18) + 1;
+  let best = Infinity;
+  starts.forEach((x) => { const d = distForward(x.start); if (d < best) best = d; });
+  return starts.filter((x) => distForward(x.start) === best).map((x) => x.matchNum);
+}
+// Whether `holeRow` (0-based idx into the 18-hole grid) already carries a
+// real result for CTP purposes — mirrors how each mode actually records a
+// hole: Day 1 and Day 2's front 9 (Best Ball) each have one Winner-style
+// field for the whole group; Day 2's back 9 runs two separate Individual
+// Match Play results (MP1Winner/MP2Winner) for the same physical hole, so
+// either one counts (they're entered together, behind one Save button).
+function holeIsCompletedForCTP(day, holeRow, idx) {
+  if (!holeRow) return false;
+  if (day === '2' || day === 2) {
+    return idx <= 8 ? !!holeRow.BestBallWinner : !!(holeRow.MP1Winner || holeRow.MP2Winner);
+  }
+  return !!holeRow.Winner;
+}
+// Called right after a save of `holes` for (day, matchNum) is confirmed
+// written to the sheet — see saveCurrentMatch. Compares against `prevHoles`
+// (the last confirmed-saved snapshot, from BEFORE this save) so the alert
+// only fires the moment a placard hole newly gets a result, not on every
+// later resave of a match that already finished it.
+function checkPlacardPickup(day, matchNum, prevHoles, holes) {
+  CLOSEST_TO_PIN_HOLES.forEach((hole) => {
+    const idx = hole - 1;
+    const wasDone = holeIsCompletedForCTP(day, (prevHoles || [])[idx], idx);
+    const isDone = holeIsCompletedForCTP(day, holes[idx], idx);
+    if (wasDone || !isDone) return; // not a fresh completion of this hole
+    const key = day + '_' + matchNum + '_' + hole;
+    if (placardAlerted.has(key)) return;
+    if (!ctpResponsibleMatchNums(day, hole).includes(String(matchNum))) return;
+    placardAlerted.add(key);
+    alert(`Pick up the Closest to the Pin marker for hole ${hole}`);
+  });
+}
 // True once every segment of this match has no holes left blank — a played-
 // out or conceded result either way (see buildSegmentResult's `final`).
 // Shared by the "Accept Results" banner in both Hole-by-Hole and Enter Match
@@ -1301,6 +1368,7 @@ async function saveCurrentMatch(day, matchNum, holes) {
   const key = day + '_' + matchNum;
   clearTimeout(saveTimers[key]);
   delete saveTimers[key];
+  const prevHoles = lastSavedHolesByMatch[key]; // snapshot from before this save, for checkPlacardPickup below
   const isCurrentlyViewed = () => String(document.getElementById('scDay').value) === String(day) && String(document.getElementById('scMatch').value) === String(matchNum);
   if (isCurrentlyViewed()) setSaveIndicator('saving', 'Saving…');
   try {
@@ -1316,6 +1384,7 @@ async function saveCurrentMatch(day, matchNum, holes) {
     // blank."
     if (holesMatchServerRows(day, holes, res.data)) {
       lastSavedHolesByMatch[key] = cloneHoles(holes);
+      checkPlacardPickup(day, matchNum, prevHoles, holes);
       if (isCurrentlyViewed()) { setSaveIndicator('saved', 'Saved ✓'); renderCurrentEntryView(day, matchNum); }
     } else if (isCurrentlyViewed()) {
       setSaveIndicator('error', 'Save didn’t verify — try again');
