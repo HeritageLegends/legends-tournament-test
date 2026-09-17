@@ -182,6 +182,19 @@
         <div id="suspendPinsStatus" class="status"></div>
       </div>
 
+      <div class="card" style="border: 1px solid #2e7d32;">
+        <h2 style="color:#2e7d32;">Concede Prompt</h2>
+        <p class="hint">When a match (or a Day 2 segment) becomes mathematically decided before every hole has
+          been played, Live Scoring can offer the losing team's scorekeeper the choice to concede the rest or keep
+          playing it out. This is ON by default. Turn it off here if you'd rather players always finish every hole
+          and never see that prompt.</p>
+        <div class="field-row" style="align-items:center; gap:12px;">
+          <strong>Status:</strong> <span id="concedeEnabledLabel" class="hint">On — scorekeepers may be offered the chance to concede</span>
+          <button class="secondary" id="concedeEnabledBtn" onclick="toggleConcedeEnabled()">Turn Off</button>
+        </div>
+        <div id="concedeEnabledStatus" class="status"></div>
+      </div>
+
       <div class="card" style="border: 1px solid #c0392b;">
         <h2 style="color:#c0392b;">Start New Season</h2>
         <p class="hint">Once this year's tournament is over and you're ready to set up next year's: this archives everything from this season (settings, roster, pairings, scores) into hidden backup tabs in the Google Sheet, then clears pairings and scores and resets every player's team back to unassigned so you can start fresh. Player names, handicaps and tees stay as they are — no need to re-enter the roster. The Hole Handicaps table also stays as-is (only re-enter it if you're changing courses).</p>
@@ -530,6 +543,7 @@ function populateSettingsForm() {
   document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament';
   updateDayLockUI();
   updateSuspendPinsUI();
+  updateConcedeEnabledUI();
   refreshPairingHeaders();
 }
 
@@ -594,6 +608,38 @@ async function toggleSuspendPins() {
     }
   } catch (err) {
     showStatus('suspendPinsStatus', false, 'Network error: ' + err.message);
+  }
+}
+
+// Mirrors concedeEnabled() in live.html. Defaults ON (existing behavior)
+// unless explicitly turned off.
+function concedeEnabledOn() {
+  const v = settings.ConcedeEnabled;
+  return !(v === false || v === 'FALSE' || v === 'false');
+}
+function updateConcedeEnabledUI() {
+  const on = concedeEnabledOn();
+  const label = document.getElementById('concedeEnabledLabel');
+  label.textContent = on ? 'On — scorekeepers may be offered the chance to concede' : 'Off — players always play out every hole';
+  label.style.color = on ? '#2e7d32' : '#c0392b';
+  label.style.fontWeight = '700';
+  document.getElementById('concedeEnabledBtn').textContent = on ? 'Turn Off' : 'Turn On';
+}
+async function toggleConcedeEnabled() {
+  const newValue = concedeEnabledOn() ? 'FALSE' : 'TRUE';
+  try {
+    const res = await apiPost('saveSettings', { settings: JSON.stringify({ ConcedeEnabled: newValue }) });
+    if (res.success) {
+      settings = res.data;
+      updateConcedeEnabledUI();
+      showStatus('concedeEnabledStatus', true, newValue === 'TRUE'
+        ? 'Concede prompt turned back on — a losing team may be offered the chance to concede once a match is decided.'
+        : 'Concede prompt turned off — Live Scoring will no longer offer to concede; players will play out every hole.');
+    } else {
+      showStatus('concedeEnabledStatus', false, res.error);
+    }
+  } catch (err) {
+    showStatus('concedeEnabledStatus', false, 'Network error: ' + err.message);
   }
 }
 

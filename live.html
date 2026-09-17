@@ -704,6 +704,12 @@ function suspendPinsOn() {
   const v = settings && settings.SuspendScorePins;
   return v === true || v === 'TRUE' || v === 'true';
 }
+// Mirrors concedeEnabled() in index.html. Defaults ON (existing behavior)
+// unless the admin has explicitly turned it off in Settings.
+function concedeEnabled() {
+  const v = settings && settings.ConcedeEnabled;
+  return !(v === false || v === 'FALSE' || v === 'false');
+}
 function matchIsUnlocked(matchNum) {
   if (suspendPinsOn()) return true; // testing mode — Settings → Suspend PIN Requirement
   if (getAdminUnlocked()) return true;
@@ -1201,7 +1207,13 @@ function renderHoleByHole(day, matchNum) {
   // segment somehow becomes undecided again (a pick toggled back off) the
   // banner quietly clears itself instead of lingering stale.
   let concedeBannerHtml = '';
-  if (concedeBannerFor && concedeBannerFor.day === day && String(concedeBannerFor.matchNum) === String(matchNum)) {
+  if (!concedeEnabled()) {
+    // Feature turned off in Settings — never show it, and clear out any
+    // pending banner from before it was turned off (e.g. mid-round) so a
+    // stale one can't reappear if it's switched back on later without this
+    // match's outcome changing again first.
+    concedeBannerFor = null;
+  } else if (concedeBannerFor && concedeBannerFor.day === day && String(concedeBannerFor.matchNum) === String(matchNum)) {
     const segResult = segmentResultForField(day, concedeBannerFor.field, concedeBannerFor.hole, pairingRow, currentHoles);
     if (segResult.clinched && !segResult.final) {
       const leaderName = segResult.leader === 'A' ? names.A : segResult.leader === 'B' ? names.B : '';
@@ -1260,7 +1272,7 @@ function renderHoleByHole(day, matchNum) {
       // other holes in an already-decided segment doesn't keep re-showing
       // it), and un-clinching it (toggling a pick back off) clears it.
       if (after.clinched && !after.final) {
-        if (!before.clinched) concedeBannerFor = { day, matchNum, field, hole: h };
+        if (!before.clinched && concedeEnabled()) concedeBannerFor = { day, matchNum, field, hole: h };
       } else if (concedeBannerFor && concedeBannerFor.day === day && String(concedeBannerFor.matchNum) === String(matchNum) && concedeBannerFor.field === field) {
         concedeBannerFor = null;
       }
