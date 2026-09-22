@@ -303,7 +303,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-22b';
+const LIVE_VERSION = '2026-09-22c';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -335,10 +335,29 @@ async function fetchWithTimeout(url, options) {
     clearTimeout(timer);
   }
 }
+// GETs never change anything server-side, so — unlike apiPost, which leaves
+// retrying to whichever caller knows it's safe to repeat that particular
+// action (see saveCurrentMatch) — it's always safe for apiGet to quietly
+// retry on its own. loadShared() below fires 7 of these at once at boot; one
+// of them being slow to answer used to be enough to fail the whole batch and
+// leave the entry gate stuck on "Checking…" until the page was reloaded —
+// this closes that gap at the source instead of relying on the person to
+// notice and retry.
 async function apiGet(action, extra) {
   const params = new URLSearchParams(Object.assign({ action, key: CFG.key }, extra || {}));
-  const res = await fetchWithTimeout(CFG.backendUrl + '?' + params.toString());
-  return res.json();
+  const url = CFG.backendUrl + '?' + params.toString();
+  const maxAttempts = 3;
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url);
+      return await res.json();
+    } catch (e) {
+      lastError = e;
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+  }
+  throw lastError;
 }
 async function apiPost(action, body) {
   const res = await fetchWithTimeout(CFG.backendUrl, { method: 'POST', body: JSON.stringify(Object.assign({ action, key: CFG.key }, body || {})) });
@@ -2144,7 +2163,13 @@ async function submitGatePin() {
   if (!entered) { errEl.textContent = 'Enter your PIN, or tap "I don\'t have a PIN" below.'; return; }
   errEl.textContent = 'Checking…';
   input.disabled = true;
-  await sharedDataPromise; // pairings/matchPins (and AdminPIN, via settings) may still be loading
+  try {
+    await ensureSharedData(); // pairings/matchPins (and AdminPIN, via settings) may still be loading
+  } catch (e) {
+    input.disabled = false;
+    errEl.textContent = 'Could not reach the tournament server — check your connection and try again.';
+    return;
+  }
   input.disabled = false;
   const adminPin = String((settings && settings.AdminPIN) || '').trim();
   if (adminPin && entered === adminPin) {
@@ -2189,11 +2214,38 @@ if (cachedShared) applySharedSnapshot_(cachedShared);
 // Started immediately (not inside boot() below) so the entry gate's PIN
 // lookup can await this same promise without waiting on loadVersionBadge or
 // the initial default-match render, neither of which it needs.
-const sharedDataPromise = loadShared();
+//
+// apiGet already retries each of the 7 calls loadShared() fires off, so this
+// only turns up empty on a real outage — but a promise that already
+// rejected stays rejected forever, and both boot() and the entry gate
+// (submitGatePin below) need to await this more than once over the page's
+// life. ensureSharedData() is what they actually await: it re-runs the
+// whole batch one more time on a first failure (a phone that briefly lost
+// signal at the exact wrong moment shouldn't need a manual page reload),
+// and only then leaves the rejection for its caller to show/handle.
+let sharedDataPromise = loadShared();
+async function ensureSharedData() {
+  try {
+    await sharedDataPromise;
+  } catch (e) {
+    sharedDataPromise = loadShared();
+    await sharedDataPromise;
+  }
+}
 (async function boot() {
   loadVersionBadge();
   if (cachedShared) populateMatchDropdown(); // instant paint of the Day/Match picker from cache
-  await sharedDataPromise;
+  try {
+    await ensureSharedData();
+  } catch (e) {
+    // Real outage: leave whatever was painted from cache (if any) on screen
+    // rather than throwing away a usable-if-stale page. If there was no
+    // cache either (a phone's first-ever load), the Day/Match picker just
+    // stays empty — submitGatePin's own catch below is what tells the
+    // person what's wrong when they try to continue.
+    console.error('Could not load tournament data', e);
+    return;
+  }
   populateMatchDropdown(); // re-run against the real data — always wins over whatever was cached
   await onScMatchSelected();
 })();

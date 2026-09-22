@@ -351,7 +351,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-22';
+const ADMIN_VERSION = '2026-09-22b';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -423,10 +423,29 @@ async function fetchWithTimeout(url, options) {
     clearTimeout(timer);
   }
 }
+// GETs never change anything server-side, so — unlike apiPost, which leaves
+// retrying to whichever caller knows it's safe to repeat that particular
+// action — it's always safe for apiGet to quietly retry on its own. This is
+// what actually closes the loop on Apps Script's occasional slow/flaky
+// response (the "Network error checking PIN: signal is aborted without
+// reason" Tom saw, then didn't see on a second try): instead of making a
+// person notice the failure and manually try again, a transient hiccup now
+// self-heals inside the same call.
 async function apiGet(action, extra) {
   const params = new URLSearchParams(Object.assign({ action, key: CFG.key }, extra || {}));
-  const res = await fetchWithTimeout(CFG.backendUrl + '?' + params.toString());
-  return res.json();
+  const url = CFG.backendUrl + '?' + params.toString();
+  const maxAttempts = 3;
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url);
+      return await res.json();
+    } catch (e) {
+      lastError = e;
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+  }
+  throw lastError;
 }
 async function apiPost(action, body) {
   const res = await fetchWithTimeout(CFG.backendUrl, {
