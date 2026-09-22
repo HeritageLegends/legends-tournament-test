@@ -303,7 +303,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-22c';
+const LIVE_VERSION = '2026-09-22d';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -468,23 +468,32 @@ function applySharedSnapshot_(snap) {
   if (snap.pairings) pairings = snap.pairings;
   if (snap.matchPins) matchPins = snap.matchPins;
 }
+// Used to fire 7 separate apiGet calls in parallel (getSettings, getRoster,
+// both hole-handicap tables, both days' pairings, getMatchPins) — measured
+// at ~16s on a live test. Each one makes the backend open the Spreadsheet by
+// ID from scratch before it can read anything, and Apps Script's own
+// per-project concurrency limits mean "7 in parallel" isn't really parallel
+// server-side. A single getBootData action (added to Code.gs alongside this
+// change — both need to be deployed together) bundles all 7 into one
+// request/one spreadsheet open, cutting a ~16s load down to roughly what one
+// of those 7 used to take on its own.
 async function loadShared() {
-  const [sRes, rRes, hRes, hRedRes, p1Res, p2Res, pinsRes] = await Promise.all([
-    apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getHoleHandicapsRed'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }), apiGet('getMatchPins'),
-  ]);
-  if (sRes.success) { settings = sRes.data; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; applyTeamColorVars(); }
-  if (rRes.success) { roster = rRes.data; indexRoster(); }
-  if (hRes.success) {
+  const res = await apiGet('getBootData');
+  if (!res.success) throw new Error(res.error || 'Could not load tournament data');
+  const d = res.data;
+  if (d.settings) { settings = d.settings; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; applyTeamColorVars(); }
+  if (d.roster) { roster = d.roster; indexRoster(); }
+  if (d.holeHandicaps) {
     holeHC.default = {};
-    hRes.data.forEach((row) => { if (row.Hole) holeHC.default[row.Hole] = { StrokeIndex: row.StrokeIndex, Par: row.Par }; });
+    d.holeHandicaps.forEach((row) => { if (row.Hole) holeHC.default[row.Hole] = { StrokeIndex: row.StrokeIndex, Par: row.Par }; });
   }
-  if (hRedRes.success) {
+  if (d.holeHandicapsRed) {
     holeHC.red = {};
-    hRedRes.data.forEach((row) => { if (row.Hole) holeHC.red[row.Hole] = { StrokeIndex: row.StrokeIndex }; });
+    d.holeHandicapsRed.forEach((row) => { if (row.Hole) holeHC.red[row.Hole] = { StrokeIndex: row.StrokeIndex }; });
   }
-  if (p1Res.success) pairings['1'] = p1Res.data;
-  if (p2Res.success) pairings['2'] = p2Res.data;
-  if (pinsRes.success) matchPins = pinsRes.data;
+  if (d.pairings1) pairings['1'] = d.pairings1;
+  if (d.pairings2) pairings['2'] = d.pairings2;
+  if (d.matchPins) matchPins = d.matchPins;
   // Cache this fresh snapshot for next time — purely a head start for the
   // NEXT page load (see boot() below); this fetch always runs regardless of
   // what was cached, and its result always wins over whatever was painted

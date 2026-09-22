@@ -351,7 +351,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-22b';
+const ADMIN_VERSION = '2026-09-22c';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -512,23 +512,32 @@ async function loadVersionBadge() {
   }
 }
 
+// Used to fire 5 separate apiGet calls plus 2 more via loadPairings (7
+// total) in parallel — the same pattern live.html's loadShared() had, and
+// the same ~16s load time it caused on a live test (see the note on
+// getBootData_ in Code.gs). One combined request now does the same job.
 async function init() {
   loadVersionBadge();
-  const [settingsRes, rosterRes, hcRes, hcRedRes, pinsRes] = await Promise.all([apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getHoleHandicapsRed'), apiGet('getMatchPins')]);
-  if (settingsRes.success) {
-    settings = settingsRes.data;
-    populateSettingsForm();
+  const res = await apiGet('getBootData');
+  if (!res.success) {
+    document.getElementById('printStatus').textContent = 'Could not load tournament data: ' + (res.error || 'unknown error') + ' — try reloading.';
+    return;
   }
-  if (rosterRes.success) {
-    roster = rosterRes.data;
-    renderRoster();
-  }
-  if (hcRes.success) holeHandicaps = hcRes.data.length ? hcRes.data : defaultHoleHandicapRows();
-  if (hcRedRes.success) holeHandicapsRed = hcRedRes.data.length ? hcRedRes.data : defaultHoleHandicapRedRows();
+  const d = res.data;
+  settings = d.settings;
+  populateSettingsForm();
+  roster = d.roster;
+  renderRoster();
+  holeHandicaps = d.holeHandicaps.length ? d.holeHandicaps : defaultHoleHandicapRows();
+  holeHandicapsRed = d.holeHandicapsRed.length ? d.holeHandicapsRed : defaultHoleHandicapRedRows();
   renderHoleHandicaps();
-  matchPins = (pinsRes.success && pinsRes.data.length) ? pinsRes.data : defaultMatchPinRows();
+  matchPins = d.matchPins.length ? d.matchPins : defaultMatchPinRows();
   renderMatchPins();
-  await Promise.all([loadPairings('1'), loadPairings('2')]);
+  pairings['1'] = d.pairings1.length ? d.pairings1 : defaultPairingRows('1');
+  pairings['2'] = d.pairings2.length ? d.pairings2 : defaultPairingRows('2');
+  renderPairings('1');
+  renderPairings('2');
+  populatePrintMatchSelect();
 }
 
 // ====================== HOLE HANDICAPS TAB ======================
@@ -1011,17 +1020,6 @@ function usedNamesInDay(day, exceptIdx, exceptField) {
     });
   });
   return used;
-}
-
-async function loadPairings(day) {
-  const res = await apiGet('getPairings', { day });
-  if (res.success) {
-    pairings[day] = res.data.length ? res.data : defaultPairingRows(day);
-  } else {
-    pairings[day] = defaultPairingRows(day);
-  }
-  renderPairings(day);
-  populatePrintMatchSelect();
 }
 
 function defaultPairingRows(day) {
