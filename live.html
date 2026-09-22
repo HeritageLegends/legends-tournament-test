@@ -303,7 +303,7 @@ const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.
 const CFG = CONFIG[ENV];
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-14';
+const LIVE_VERSION = '2026-09-22b';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -316,13 +316,32 @@ async function loadVersionBadge() {
 }
 
 // ====================== API HELPERS ======================
+// The backend's save_* actions this page calls (saveMatchScores_ chief among
+// them) wait on a shared lock for up to 10s before giving up — a plain,
+// un-timed fetch() can then sit open far longer than that on a weak course
+// connection with no controlled way to react, and either hangs the UI or
+// eventually gets killed by the browser/OS with a bare "Failed to fetch"
+// that's indistinguishable from every other kind of failure. Every call here
+// goes through this instead, with a healthy margin above that 10s, so a
+// stuck request reliably gives up (and can be retried — see
+// saveCurrentMatch) well before that happens.
+const FETCH_TIMEOUT_MS = 20000;
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function apiGet(action, extra) {
   const params = new URLSearchParams(Object.assign({ action, key: CFG.key }, extra || {}));
-  const res = await fetch(CFG.backendUrl + '?' + params.toString());
+  const res = await fetchWithTimeout(CFG.backendUrl + '?' + params.toString());
   return res.json();
 }
 async function apiPost(action, body) {
-  const res = await fetch(CFG.backendUrl, { method: 'POST', body: JSON.stringify(Object.assign({ action, key: CFG.key }, body || {})) });
+  const res = await fetchWithTimeout(CFG.backendUrl, { method: 'POST', body: JSON.stringify(Object.assign({ action, key: CFG.key }, body || {})) });
   return res.json();
 }
 
@@ -399,6 +418,37 @@ function strokesOnHole(handicapIndex, strokeIndex) {
 function normalizeWinner(w) {
   return (w === 'A' || w === 'B' || w === 'Half' || w === 'Conceded') ? w : 'pending';
 }
+// Last-known-good cache for settings/roster/pairings/handicaps/PINs — the
+// slow-changing setup data, never live scores (those always need a real
+// fetch — see onScMatchSelected — since showing a stale score would be worse
+// than a brief wait for a correct one). Deliberately scoped per environment
+// (test vs live) so testing on ?env=test can never leak into, or get
+// overwritten by, the real tournament's cached data or vice versa.
+const SHARED_CACHE_KEY = 'legendsSharedCache_' + ENV;
+function loadCachedShared_() {
+  try {
+    const raw = localStorage.getItem(SHARED_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function saveCachedShared_() {
+  try {
+    localStorage.setItem(SHARED_CACHE_KEY, JSON.stringify({ settings, roster, holeHC, pairings, matchPins }));
+  } catch (e) { /* storage full/unavailable — page still works, just without an instant paint next load */ }
+}
+// Applies a cached (or freshly-loaded) snapshot to the shared module state
+// and the bits of UI that don't need anything else to have run first —
+// shared by both the instant-paint-from-cache path in boot() below and the
+// real loadShared() fetch, so there's exactly one place that knows how to
+// turn this data into on-screen state.
+function applySharedSnapshot_(snap) {
+  if (!snap) return;
+  if (snap.settings) { settings = snap.settings; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; applyTeamColorVars(); }
+  if (snap.roster) { roster = snap.roster; indexRoster(); }
+  if (snap.holeHC) holeHC = snap.holeHC;
+  if (snap.pairings) pairings = snap.pairings;
+  if (snap.matchPins) matchPins = snap.matchPins;
+}
 async function loadShared() {
   const [sRes, rRes, hRes, hRedRes, p1Res, p2Res, pinsRes] = await Promise.all([
     apiGet('getSettings'), apiGet('getRoster'), apiGet('getHoleHandicaps'), apiGet('getHoleHandicapsRed'), apiGet('getPairings', { day: '1' }), apiGet('getPairings', { day: '2' }), apiGet('getMatchPins'),
@@ -416,6 +466,11 @@ async function loadShared() {
   if (p1Res.success) pairings['1'] = p1Res.data;
   if (p2Res.success) pairings['2'] = p2Res.data;
   if (pinsRes.success) matchPins = pinsRes.data;
+  // Cache this fresh snapshot for next time — purely a head start for the
+  // NEXT page load (see boot() below); this fetch always runs regardless of
+  // what was cached, and its result always wins over whatever was painted
+  // from cache.
+  saveCachedShared_();
 }
 
 function teamNames() {
@@ -490,6 +545,17 @@ let currentHoles = []; // in-memory grid for the currently selected match
 // was scheduled for, so it always saves the right data to the right match
 // even after you've navigated away — see scheduleAutosave/saveCurrentMatch.
 let saveTimers = {};
+// Both keyed by "day_matchNum", alongside saveTimers above:
+//  - inFlightSaves[key]: true while a saveMatchScores POST for that match is
+//    actually talking to the server.
+//  - queuedSaves[key]: the newest {day, matchNum, holes} snapshot that came
+//    in WHILE one was in flight — sent as soon as the in-flight one finishes,
+//    instead of firing a second overlapping request whose response could
+//    land first and get overwritten by the earlier one's late-arriving
+//    response (or vice versa), silently losing whichever entry lost that
+//    race. See saveCurrentMatch.
+let inFlightSaves = {};
+let queuedSaves = {};
 let scHoleIndex = 0; // 0-based, 0..17 — which hole the hbh view is showing
 
 // Snapshot (by "day_matchNum") of the hole data as of the last time it was
@@ -1372,6 +1438,18 @@ function setSaveIndicator(cls, text) {
 // screen. The day/matchNum/holes fallbacks below (reading straight off the
 // dropdowns/currentHoles) are just defensive — nothing currently calls this
 // without arguments — in case something ever does again.
+//
+// Two safety nets on top of the original single attempt:
+//  - a transient failure (network hiccup, a timeout, or a save that posted
+//    but didn't verify) retries automatically, with a short backoff, before
+//    giving up — so one blip mid-round doesn't permanently lose an entry
+//    behind a small error indicator nobody happens to notice.
+//  - if this SAME match gets saved again (autosave firing, "Save now", or a
+//    retry) while an earlier save for it is still talking to the server,
+//    this doesn't fire a second overlapping request — their responses could
+//    land out of order and let a stale one overwrite what the newer one just
+//    confirmed. The newer snapshot is queued instead and sent the moment the
+//    in-flight one finishes, so no edit is ever silently dropped.
 async function saveCurrentMatch(day, matchNum, holes) {
   if (day === undefined) day = document.getElementById('scDay').value;
   if (matchNum === undefined) matchNum = document.getElementById('scMatch').value;
@@ -1380,30 +1458,54 @@ async function saveCurrentMatch(day, matchNum, holes) {
   const key = day + '_' + matchNum;
   clearTimeout(saveTimers[key]);
   delete saveTimers[key];
+
+  if (inFlightSaves[key]) {
+    queuedSaves[key] = { day, matchNum, holes };
+    return;
+  }
+  inFlightSaves[key] = true;
+  try {
+    await saveCurrentMatchNow_(day, matchNum, holes, key);
+  } finally {
+    delete inFlightSaves[key];
+    const queued = queuedSaves[key];
+    if (queued) {
+      delete queuedSaves[key];
+      saveCurrentMatch(queued.day, queued.matchNum, queued.holes);
+    }
+  }
+}
+
+async function saveCurrentMatchNow_(day, matchNum, holes, key) {
   const prevHoles = lastSavedHolesByMatch[key]; // snapshot from before this save, for checkPlacardPickup below
   const isCurrentlyViewed = () => String(document.getElementById('scDay').value) === String(day) && String(document.getElementById('scMatch').value) === String(matchNum);
   if (isCurrentlyViewed()) setSaveIndicator('saving', 'Saving…');
-  try {
-    const res = await apiPost('saveMatchScores', { day, matchNum, holes: JSON.stringify(holes) });
-    if (!res.success) {
-      if (isCurrentlyViewed()) setSaveIndicator('error', res.error);
-      return;
+  const maxAttempts = 3;
+  let lastErrorText = 'Network error';
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await apiPost('saveMatchScores', { day, matchNum, holes: JSON.stringify(holes) });
+      if (!res.success) {
+        lastErrorText = res.error || 'Save failed';
+      } else if (holesMatchServerRows(day, holes, res.data)) {
+        // Don't just trust "success" from the API call — check what the sheet
+        // actually ended up holding (returned right after the write) matches
+        // what we sent, so a save that silently didn't stick shows as an error
+        // here and now instead of only surfacing later as "the hole came back
+        // blank."
+        lastSavedHolesByMatch[key] = cloneHoles(holes);
+        checkPlacardPickup(day, matchNum, prevHoles, holes);
+        if (isCurrentlyViewed()) { setSaveIndicator('saved', 'Saved ✓'); renderCurrentEntryView(day, matchNum); }
+        return;
+      } else {
+        lastErrorText = 'Save didn’t verify — try again';
+      }
+    } catch (err) {
+      lastErrorText = 'Network error';
     }
-    // Don't just trust "success" from the API call — check what the sheet
-    // actually ended up holding (returned right after the write) matches
-    // what we sent, so a save that silently didn't stick shows as an error
-    // here and now instead of only surfacing later as "the hole came back
-    // blank."
-    if (holesMatchServerRows(day, holes, res.data)) {
-      lastSavedHolesByMatch[key] = cloneHoles(holes);
-      checkPlacardPickup(day, matchNum, prevHoles, holes);
-      if (isCurrentlyViewed()) { setSaveIndicator('saved', 'Saved ✓'); renderCurrentEntryView(day, matchNum); }
-    } else if (isCurrentlyViewed()) {
-      setSaveIndicator('error', 'Save didn’t verify — try again');
-    }
-  } catch (err) {
-    if (isCurrentlyViewed()) setSaveIndicator('error', 'Network error');
+    if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 600 * attempt));
   }
+  if (isCurrentlyViewed()) setSaveIndicator('error', lastErrorText);
 }
 
 // live status line(s) shown above the grid as you type, computed entirely client-side
@@ -2023,6 +2125,18 @@ function findMatchNumByPin(pin) {
   });
   return row ? String(row.MatchNum) : null;
 }
+// Which day a PIN entry should land on: Day 1 up until Day 2's own date
+// (from Settings), Day 2 from that date on — so a Day-2 scorekeeper typing
+// their PIN on the morning of Day 2 doesn't have to manually switch off of
+// Day 1 first before they can enter anything. Falls back to Day 1 if
+// Day2Date isn't set (or isn't a valid date) yet.
+function defaultGateDay_() {
+  const day2Date = settings && settings.Day2Date ? new Date(settings.Day2Date + 'T00:00:00') : null;
+  if (!day2Date || isNaN(day2Date.getTime())) return '1';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today >= day2Date ? '2' : '1';
+}
 async function submitGatePin() {
   const input = document.getElementById('gatePinInput');
   const entered = input.value.trim();
@@ -2036,8 +2150,11 @@ async function submitGatePin() {
   if (adminPin && entered === adminPin) {
     // The Admin PIN unlocks every match on this device — there's no single
     // match to route to, so just drop into Live Scoring's normal day/match
-    // dropdowns, everything already unlocked.
+    // dropdowns, everything already unlocked, defaulted to today's day (see
+    // defaultGateDay_).
     setAdminUnlocked(true);
+    document.getElementById('scDay').value = defaultGateDay_();
+    onScDayOrMatchChange();
     hideEntryGate();
     return;
   }
@@ -2047,9 +2164,10 @@ async function submitGatePin() {
     return;
   }
   // One shared PIN covers this match number on both Day 1 and Day 2 — store
-  // it once, then land on whichever day is currently selected (Day 1 by
-  // default), same as before.
+  // it once, then land on today's day (Day 1 before Day 2's date, Day 2 from
+  // then on — see defaultGateDay_) with this match already selected.
   storePin(matchNum, entered);
+  document.getElementById('scDay').value = defaultGateDay_();
   populateMatchDropdown();
   document.getElementById('scMatch').value = matchNum;
   await onScMatchSelected();
@@ -2058,14 +2176,25 @@ async function submitGatePin() {
 document.getElementById('gatePinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitGatePin(); });
 
 // ====================== BOOT ======================
+// Paint instantly from whatever settings/roster/pairings were last
+// successfully loaded on this device (if anything), while the real fetch
+// below runs in the background — avoids a blank/unusable Day-Match picker on
+// a slow connection. Deliberately excludes match scores: those always come
+// from the live fetch in onScMatchSelected below, never from this cache,
+// since showing a stale score would be actively worse than a brief wait for
+// the real one.
+const cachedShared = loadCachedShared_();
+if (cachedShared) applySharedSnapshot_(cachedShared);
+
 // Started immediately (not inside boot() below) so the entry gate's PIN
 // lookup can await this same promise without waiting on loadVersionBadge or
 // the initial default-match render, neither of which it needs.
 const sharedDataPromise = loadShared();
 (async function boot() {
   loadVersionBadge();
+  if (cachedShared) populateMatchDropdown(); // instant paint of the Day/Match picker from cache
   await sharedDataPromise;
-  populateMatchDropdown();
+  populateMatchDropdown(); // re-run against the real data — always wins over whatever was cached
   await onScMatchSelected();
 })();
 </script>

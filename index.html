@@ -351,7 +351,7 @@ const CONFIG = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-15f';
+const ADMIN_VERSION = '2026-09-22';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -405,13 +405,31 @@ async function checkPin() {
 document.getElementById('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') checkPin(); });
 
 // ====================== API HELPERS ======================
+// Same reasoning as live.html's copy of this: the backend's save_* actions
+// wait on a shared lock for up to 10s (20s for the rare startNewSeason_
+// archive action, the longest of any action in this file) before giving up —
+// a plain, un-timed fetch() can then sit open far longer than that on a weak
+// connection with no controlled way to react. Set a few seconds above that
+// 20s worst case (rather than live.html's 20s, tuned to its 10s max) so a
+// legitimately-still-processing startNewSeason_ can't get aborted right as
+// it's about to finish.
+const FETCH_TIMEOUT_MS = 25000;
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function apiGet(action, extra) {
   const params = new URLSearchParams(Object.assign({ action, key: CFG.key }, extra || {}));
-  const res = await fetch(CFG.backendUrl + '?' + params.toString());
+  const res = await fetchWithTimeout(CFG.backendUrl + '?' + params.toString());
   return res.json();
 }
 async function apiPost(action, body) {
-  const res = await fetch(CFG.backendUrl, {
+  const res = await fetchWithTimeout(CFG.backendUrl, {
     method: 'POST',
     body: JSON.stringify(Object.assign({ action, key: CFG.key }, body || {})),
   });
