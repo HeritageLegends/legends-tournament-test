@@ -329,7 +329,966 @@ const CFG = CONFIG[ENV];
 // An empty object here is completely fine (everyone's first load just falls
 // back to fetching live, exactly as it did before this existed).
 // ===== SNAPSHOT START =====
-const EMBEDDED_SNAPSHOT = {};
+const EMBEDDED_SNAPSHOT = {
+  "settings": {
+    "TournamentName": "2026 Heritage Legends Tournament",
+    "Day1Date": "2026-09-30",
+    "Day2Date": "2026-10-01",
+    "TeamAName": "Canesin6",
+    "TeamACaptain": "Kevin Kusilek",
+    "TeamBName": "Birdie Boys",
+    "TeamBCaptain": "Winston Shade",
+    "AdminPIN": 1980,
+    "Day1Locked": false,
+    "Day2Locked": false,
+    "SuspendScorePins": "FALSE",
+    "TeamAColor": "#add8e6",
+    "TeamBColor": "#bf5700",
+    "ConcedeEnabled": "FALSE"
+  },
+  "roster": [
+    {
+      "PlayerID": 1,
+      "Name": "Nicklaus, Jack",
+      "Team": "A",
+      "HandicapIndex": 24.1,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 2,
+      "Name": "Woods, Tiger",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 3,
+      "Name": "Hogan, Ben",
+      "Team": "B",
+      "HandicapIndex": 14.2,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 4,
+      "Name": "Hagen, Walter",
+      "Team": "A",
+      "HandicapIndex": 20.9,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 5,
+      "Name": "Player, Gary",
+      "Team": "A",
+      "HandicapIndex": 14.2,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 6,
+      "Name": "Snead, Sam",
+      "Team": "B",
+      "HandicapIndex": 9.9,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 7,
+      "Name": "Watson, Tom",
+      "Team": "B",
+      "HandicapIndex": 24,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 8,
+      "Name": "Palmer, Arnold",
+      "Team": "B",
+      "HandicapIndex": 16.1,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 9,
+      "Name": "Jones, Bobby",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 10,
+      "Name": "Vardon, Harry",
+      "Team": "B",
+      "HandicapIndex": 11.8,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 11,
+      "Name": "Sarazen, Gene",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 12,
+      "Name": "Nelson, Byron",
+      "Team": "B",
+      "HandicapIndex": 21.9,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 13,
+      "Name": "Ballesteros, Seve",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 14,
+      "Name": "Faldo, Nick",
+      "Team": "A",
+      "HandicapIndex": 19.8,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 15,
+      "Name": "Trevino, Lee",
+      "Team": "A",
+      "HandicapIndex": 16,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 16,
+      "Name": "Mickelson, Phil",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 17,
+      "Name": "McIlroy, Rory",
+      "Team": "A",
+      "HandicapIndex": 20.4,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 18,
+      "Name": "Thomson, Peter",
+      "Team": "A",
+      "HandicapIndex": 24.2,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 19,
+      "Name": "Scheffler, Scottie",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 20,
+      "Name": "Koepka, Brooks",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 21,
+      "Name": "Casper, Billy",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 22,
+      "Name": "Floyd, Raymond",
+      "Team": "A",
+      "HandicapIndex": 16.1,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 23,
+      "Name": "Els, Ernie",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 24,
+      "Name": "Singh, Vijay",
+      "Team": "A",
+      "HandicapIndex": 8.7,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 25,
+      "Name": "Price, Nick",
+      "Team": "A",
+      "HandicapIndex": 19.8,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 26,
+      "Name": "Norman, Greg",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 27,
+      "Name": "Irwin, Hale",
+      "Team": "A",
+      "HandicapIndex": 9,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 28,
+      "Name": "Miller, Johnny",
+      "Team": "B",
+      "HandicapIndex": 11.9,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 29,
+      "Name": "Strange, Curtis",
+      "Team": "B",
+      "HandicapIndex": 12.5,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 30,
+      "Name": "Nelson, Larry",
+      "Team": "A",
+      "HandicapIndex": 29.5,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 31,
+      "Name": "Boros, Julius",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 32,
+      "Name": "Middlecoff, Cary",
+      "Team": "A",
+      "HandicapIndex": 13.4,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 33,
+      "Name": "Barnes, Jim",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 34,
+      "Name": "Anderson, Willie",
+      "Team": "B",
+      "HandicapIndex": 15.9,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 35,
+      "Name": "Taylor, J.H.",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 36,
+      "Name": "Braid, James",
+      "Team": "A",
+      "HandicapIndex": 21.4,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 37,
+      "Name": "Morris, OldTom",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 38,
+      "Name": "Morris, YoungTom",
+      "Team": "A",
+      "HandicapIndex": 11.1,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 39,
+      "Name": "Cotton, Henry",
+      "Team": "B",
+      "HandicapIndex": 12.9,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 40,
+      "Name": "Furyk, Jim",
+      "Team": "B",
+      "HandicapIndex": 25.4,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 41,
+      "Name": "Harrington, Padraig",
+      "Team": "B",
+      "HandicapIndex": 14.4,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 42,
+      "Name": "Goosen, Retief",
+      "Team": "B",
+      "HandicapIndex": 20.1,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 43,
+      "Name": "Cabrera, Angel",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 44,
+      "Name": "Love, Davis III",
+      "Team": "B",
+      "HandicapIndex": 22.4,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 45,
+      "Name": "Couples, Fred",
+      "Team": "B",
+      "HandicapIndex": 25.2,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 46,
+      "Name": "Olazabal, Jose Maria",
+      "Team": "B",
+      "HandicapIndex": 7.3,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 47,
+      "Name": "Langer, Bernhard",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 48,
+      "Name": "Woosnam, Ian",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 49,
+      "Name": "Lyle, Sandy",
+      "Team": "A",
+      "HandicapIndex": 15.8,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": "true"
+    },
+    {
+      "PlayerID": 50,
+      "Name": "O'Meara, Mark",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 51,
+      "Name": "Duval, David",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 52,
+      "Name": "Leonard, Justin",
+      "Team": "A",
+      "HandicapIndex": 24,
+      "Tee": "Gold",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 53,
+      "Name": "Rahm, Jon",
+      "Team": "ON_STANDBY",
+      "HandicapIndex": 8.4,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 54,
+      "Name": "Johnson, Dustin",
+      "Team": "A",
+      "HandicapIndex": 18.6,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 55,
+      "Name": "Thomas, Justin",
+      "Team": "B",
+      "HandicapIndex": 21.4,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 56,
+      "Name": "Schauffele, Xander",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 57,
+      "Name": "Morikawa, Collin",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 58,
+      "Name": "Ouimet, Francis",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 59,
+      "Name": "De Vicenzo, Roberto",
+      "Team": "NOT_PLAYING",
+      "HandicapIndex": "",
+      "Tee": "",
+      "Active": "true",
+      "Scorekeeper": ""
+    },
+    {
+      "PlayerID": 60,
+      "Name": "Charles, Bob",
+      "Team": "B",
+      "HandicapIndex": 30.1,
+      "Tee": "Red",
+      "Active": "true",
+      "Scorekeeper": ""
+    }
+  ],
+  "holeHandicaps": [
+    {
+      "Hole": 1,
+      "StrokeIndex": 15,
+      "Par": 5
+    },
+    {
+      "Hole": 2,
+      "StrokeIndex": 1,
+      "Par": 4
+    },
+    {
+      "Hole": 3,
+      "StrokeIndex": 13,
+      "Par": 4
+    },
+    {
+      "Hole": 4,
+      "StrokeIndex": 3,
+      "Par": 4
+    },
+    {
+      "Hole": 5,
+      "StrokeIndex": 9,
+      "Par": 3
+    },
+    {
+      "Hole": 6,
+      "StrokeIndex": 11,
+      "Par": 5
+    },
+    {
+      "Hole": 7,
+      "StrokeIndex": 5,
+      "Par": 4
+    },
+    {
+      "Hole": 8,
+      "StrokeIndex": 17,
+      "Par": 3
+    },
+    {
+      "Hole": 9,
+      "StrokeIndex": 7,
+      "Par": 4
+    },
+    {
+      "Hole": 10,
+      "StrokeIndex": 4,
+      "Par": 4
+    },
+    {
+      "Hole": 11,
+      "StrokeIndex": 14,
+      "Par": 4
+    },
+    {
+      "Hole": 12,
+      "StrokeIndex": 16,
+      "Par": 3
+    },
+    {
+      "Hole": 13,
+      "StrokeIndex": 8,
+      "Par": 4
+    },
+    {
+      "Hole": 14,
+      "StrokeIndex": 6,
+      "Par": 5
+    },
+    {
+      "Hole": 15,
+      "StrokeIndex": 2,
+      "Par": 4
+    },
+    {
+      "Hole": 16,
+      "StrokeIndex": 12,
+      "Par": 4
+    },
+    {
+      "Hole": 17,
+      "StrokeIndex": 18,
+      "Par": 3
+    },
+    {
+      "Hole": 18,
+      "StrokeIndex": 10,
+      "Par": 5
+    }
+  ],
+  "holeHandicapsRed": [
+    {
+      "Hole": 1,
+      "StrokeIndex": 7
+    },
+    {
+      "Hole": 2,
+      "StrokeIndex": 17
+    },
+    {
+      "Hole": 3,
+      "StrokeIndex": 13
+    },
+    {
+      "Hole": 4,
+      "StrokeIndex": 3
+    },
+    {
+      "Hole": 5,
+      "StrokeIndex": 9
+    },
+    {
+      "Hole": 6,
+      "StrokeIndex": 1
+    },
+    {
+      "Hole": 7,
+      "StrokeIndex": 5
+    },
+    {
+      "Hole": 8,
+      "StrokeIndex": 15
+    },
+    {
+      "Hole": 9,
+      "StrokeIndex": 11
+    },
+    {
+      "Hole": 10,
+      "StrokeIndex": 8
+    },
+    {
+      "Hole": 11,
+      "StrokeIndex": 10
+    },
+    {
+      "Hole": 12,
+      "StrokeIndex": 16
+    },
+    {
+      "Hole": 13,
+      "StrokeIndex": 2
+    },
+    {
+      "Hole": 14,
+      "StrokeIndex": 4
+    },
+    {
+      "Hole": 15,
+      "StrokeIndex": 6
+    },
+    {
+      "Hole": 16,
+      "StrokeIndex": 14
+    },
+    {
+      "Hole": 17,
+      "StrokeIndex": 18
+    },
+    {
+      "Hole": 18,
+      "StrokeIndex": 12
+    }
+  ],
+  "pairings1": [
+    {
+      "MatchNum": 1,
+      "TeamA_P1": "Nicklaus, Jack",
+      "TeamA_P2": "Price, Nick",
+      "TeamB_P1": "Hogan, Ben",
+      "TeamB_P2": "Cotton, Henry",
+      "StartHole": 13
+    },
+    {
+      "MatchNum": 2,
+      "TeamA_P1": "Hagen, Walter",
+      "TeamA_P2": "Irwin, Hale",
+      "TeamB_P1": "Snead, Sam",
+      "TeamB_P2": "Furyk, Jim",
+      "StartHole": "14a"
+    },
+    {
+      "MatchNum": 3,
+      "TeamA_P1": "Player, Gary",
+      "TeamA_P2": "Nelson, Larry",
+      "TeamB_P1": "Watson, Tom",
+      "TeamB_P2": "Harrington, Padraig",
+      "StartHole": "14b"
+    },
+    {
+      "MatchNum": 4,
+      "TeamA_P1": "Faldo, Nick",
+      "TeamA_P2": "Middlecoff, Cary",
+      "TeamB_P1": "Palmer, Arnold",
+      "TeamB_P2": "Goosen, Retief",
+      "StartHole": 15
+    },
+    {
+      "MatchNum": 5,
+      "TeamA_P1": "Trevino, Lee",
+      "TeamA_P2": "Braid, James",
+      "TeamB_P1": "Vardon, Harry",
+      "TeamB_P2": "Love, Davis III",
+      "StartHole": 16
+    },
+    {
+      "MatchNum": 6,
+      "TeamA_P1": "McIlroy, Rory",
+      "TeamA_P2": "Morris, YoungTom",
+      "TeamB_P1": "Nelson, Byron",
+      "TeamB_P2": "Couples, Fred",
+      "StartHole": 17
+    },
+    {
+      "MatchNum": 7,
+      "TeamA_P1": "Thomson, Peter",
+      "TeamA_P2": "Lyle, Sandy",
+      "TeamB_P1": "Miller, Johnny",
+      "TeamB_P2": "Olazabal, Jose Maria",
+      "StartHole": "18a"
+    },
+    {
+      "MatchNum": 8,
+      "TeamA_P1": "Floyd, Raymond",
+      "TeamA_P2": "Leonard, Justin",
+      "TeamB_P1": "Strange, Curtis",
+      "TeamB_P2": "Thomas, Justin",
+      "StartHole": "18b"
+    },
+    {
+      "MatchNum": 9,
+      "TeamA_P1": "Singh, Vijay",
+      "TeamA_P2": "Johnson, Dustin",
+      "TeamB_P1": "Anderson, Willie",
+      "TeamB_P2": "Charles, Bob",
+      "StartHole": 1
+    }
+  ],
+  "pairings2": [
+    {
+      "MatchNum": 1,
+      "TeamA_P1": "Nicklaus, Jack",
+      "TeamA_P2": "Johnson, Dustin",
+      "TeamB_P1": "Hogan, Ben",
+      "TeamB_P2": "Charles, Bob",
+      "MP1_TeamA": "Nicklaus, Jack",
+      "MP1_TeamB": "Hogan, Ben",
+      "MP2_TeamA": "Johnson, Dustin",
+      "MP2_TeamB": "Charles, Bob",
+      "MPSwapped": "",
+      "StartHole": 13
+    },
+    {
+      "MatchNum": 2,
+      "TeamA_P1": "Hagen, Walter",
+      "TeamA_P2": "Leonard, Justin",
+      "TeamB_P1": "Snead, Sam",
+      "TeamB_P2": "Thomas, Justin",
+      "MP1_TeamA": "Hagen, Walter",
+      "MP1_TeamB": "Snead, Sam",
+      "MP2_TeamA": "Leonard, Justin",
+      "MP2_TeamB": "Thomas, Justin",
+      "MPSwapped": "",
+      "StartHole": "14a"
+    },
+    {
+      "MatchNum": 3,
+      "TeamA_P1": "Player, Gary",
+      "TeamA_P2": "Lyle, Sandy",
+      "TeamB_P1": "Watson, Tom",
+      "TeamB_P2": "Olazabal, Jose Maria",
+      "MP1_TeamA": "Player, Gary",
+      "MP1_TeamB": "Watson, Tom",
+      "MP2_TeamA": "Lyle, Sandy",
+      "MP2_TeamB": "Olazabal, Jose Maria",
+      "MPSwapped": "",
+      "StartHole": "14b"
+    },
+    {
+      "MatchNum": 4,
+      "TeamA_P1": "Faldo, Nick",
+      "TeamA_P2": "Morris, YoungTom",
+      "TeamB_P1": "Palmer, Arnold",
+      "TeamB_P2": "Couples, Fred",
+      "MP1_TeamA": "Faldo, Nick",
+      "MP1_TeamB": "Palmer, Arnold",
+      "MP2_TeamA": "Morris, YoungTom",
+      "MP2_TeamB": "Couples, Fred",
+      "MPSwapped": "",
+      "StartHole": 15
+    },
+    {
+      "MatchNum": 5,
+      "TeamA_P1": "Trevino, Lee",
+      "TeamA_P2": "Braid, James",
+      "TeamB_P1": "Vardon, Harry",
+      "TeamB_P2": "Love, Davis III",
+      "MP1_TeamA": "Trevino, Lee",
+      "MP1_TeamB": "Vardon, Harry",
+      "MP2_TeamA": "Braid, James",
+      "MP2_TeamB": "Love, Davis III",
+      "MPSwapped": "",
+      "StartHole": 16
+    },
+    {
+      "MatchNum": 6,
+      "TeamA_P1": "McIlroy, Rory",
+      "TeamA_P2": "Middlecoff, Cary",
+      "TeamB_P1": "Nelson, Byron",
+      "TeamB_P2": "Goosen, Retief",
+      "MP1_TeamA": "McIlroy, Rory",
+      "MP1_TeamB": "Nelson, Byron",
+      "MP2_TeamA": "Middlecoff, Cary",
+      "MP2_TeamB": "Goosen, Retief",
+      "MPSwapped": "",
+      "StartHole": 17
+    },
+    {
+      "MatchNum": 7,
+      "TeamA_P1": "Thomson, Peter",
+      "TeamA_P2": "Floyd, Raymond",
+      "TeamB_P1": "Miller, Johnny",
+      "TeamB_P2": "Harrington, Padraig",
+      "MP1_TeamA": "Thomson, Peter",
+      "MP1_TeamB": "Miller, Johnny",
+      "MP2_TeamA": "Floyd, Raymond",
+      "MP2_TeamB": "Harrington, Padraig",
+      "MPSwapped": "",
+      "StartHole": "18a"
+    },
+    {
+      "MatchNum": 8,
+      "TeamA_P1": "Singh, Vijay",
+      "TeamA_P2": "Nelson, Larry",
+      "TeamB_P1": "Strange, Curtis",
+      "TeamB_P2": "Furyk, Jim",
+      "MP1_TeamA": "Singh, Vijay",
+      "MP1_TeamB": "Strange, Curtis",
+      "MP2_TeamA": "Nelson, Larry",
+      "MP2_TeamB": "Furyk, Jim",
+      "MPSwapped": "",
+      "StartHole": "18b"
+    },
+    {
+      "MatchNum": 9,
+      "TeamA_P1": "Price, Nick",
+      "TeamA_P2": "Irwin, Hale",
+      "TeamB_P1": "Anderson, Willie",
+      "TeamB_P2": "Cotton, Henry",
+      "MP1_TeamA": "Price, Nick",
+      "MP1_TeamB": "Anderson, Willie",
+      "MP2_TeamA": "Irwin, Hale",
+      "MP2_TeamB": "Cotton, Henry",
+      "MPSwapped": "",
+      "StartHole": 1
+    }
+  ],
+  "matchPins": [
+    {
+      "MatchNum": "1",
+      "PIN": "0001"
+    },
+    {
+      "MatchNum": "2",
+      "PIN": "0002"
+    },
+    {
+      "MatchNum": "3",
+      "PIN": "0003"
+    },
+    {
+      "MatchNum": "4",
+      "PIN": "0004"
+    },
+    {
+      "MatchNum": "5",
+      "PIN": "0005"
+    },
+    {
+      "MatchNum": "6",
+      "PIN": "0006"
+    },
+    {
+      "MatchNum": "7",
+      "PIN": "0007"
+    },
+    {
+      "MatchNum": "8",
+      "PIN": "0008"
+    },
+    {
+      "MatchNum": "9",
+      "PIN": "0009"
+    }
+  ]
+};
+// ===== SNAPSHOT END — paste this whole block (all three marked lines and
+//   everything between them) over the old SNAPSHOT block, in BOTH
+//   index.html and live.html =====
 // ===== SNAPSHOT END — paste this whole block (all three marked lines and
 //   everything between them) over the old SNAPSHOT block, in BOTH
 //   index.html and live.html =====
