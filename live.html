@@ -9,7 +9,16 @@
     --green: #1e5b3a; --green-dark: #123c26; --gold: #c9a227;
     --bg: #f5f5f0; --card: #ffffff; --border: #d8d8d0;
     --text: #222; --muted: #777; --error: #b3261e; --ok: #1e5b3a;
-    --win: #e6f4ea; --lose: #fdecea; --half: #f5f0e0;
+    --win: #e6f4ea; --lose: #fdecea;
+    /* Tie/Halve color — a clear yellow. It used to be a very pale cream
+       (#f5f0e0), which read as almost the same shade as an unscored hole's
+       plain grey (#eee) at a glance, especially in bright outdoor light —
+       Tom flagged this after the first real match-day test. Feeds every tied
+       indicator in the app (the 18-hole progress strip, the Halve pick
+       button, the tie badge on scorecards, the "halved" status badge), not
+       just the one Tom noticed, since they're all the same "this hole/match
+       is tied" signal and should look the same. */
+    --half: #ffd400;
     /* Overwritten from Settings once loaded (see applyTeamColorVars) — these
        defaults just match teamColors()'s own JS fallback, for the instant
        before that runs. */
@@ -123,6 +132,11 @@
   td.lbx-tied { background: #eee; }
   tr.lbx-total td { font-weight: 700; background: var(--green-dark); color: #fff; border-bottom: none; }
   tr.lbx-total td.lbx-pair-h { text-align: left; }
+  /* Two Day Total's per-format detail, tucked behind a single toggle below
+     the pooled-total table — see toggleTdtDetail/formatDetailTableHtml. */
+  .lbx-detail-toggle-row { text-align: center; margin: 14px 0 4px; }
+  .lbx-detail-section { margin-top: 14px; }
+  .lbx-detail-section:first-child { margin-top: 0; }
 
   /* ---- Individual Results: one table per team, one row per player ---- */
   .indiv-wrap { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
@@ -301,9 +315,27 @@ const CONFIG = {
 const envParam = new URLSearchParams(location.search).get('env');
 const ENV = (envParam === 'test' || envParam === 'live') ? envParam : (location.href.toLowerCase().includes('test') ? 'test' : 'live');
 const CFG = CONFIG[ENV];
+// Regenerate this from the admin page's "Copy Tournament Snapshot" button
+// (Settings tab) before match day, and paste the whole block — start marker,
+// the const, and end marker — over this one, in BOTH this file and
+// index.html. It's exactly the shape apiGet('getBootData') returns. Once
+// pairings/rosters/PINs are finalized, this lets a phone's very first login
+// paint instantly from data already sitting in the page instead of waiting
+// on Google — the biggest help right at the moment everyone opens the app
+// at once. It only covers settings/roster/pairings/PINs, never live scores,
+// so nothing about mid-round play depends on it, and an out-of-date
+// snapshot isn't harmful — see applySharedSnapshot_/loadShared below, the
+// real fetch that runs alongside it always wins moments later regardless.
+// An empty object here is completely fine (everyone's first load just falls
+// back to fetching live, exactly as it did before this existed).
+// ===== SNAPSHOT START =====
+const EMBEDDED_SNAPSHOT = {};
+// ===== SNAPSHOT END — paste this whole block (all three marked lines and
+//   everything between them) over the old SNAPSHOT block, in BOTH
+//   index.html and live.html =====
 // Bumped by hand every time this file changes — see the matching constant in
 // index.html and Code.gs.
-const LIVE_VERSION = '2026-09-22d';
+const LIVE_VERSION = '2026-09-23b';
 document.getElementById('envBadge').innerHTML = `${ENV.toUpperCase()}<div style="font-size:11px; opacity:0.75;" id="liveVersionBadge">Page: ${LIVE_VERSION} • Backend: …</div>`;
 async function loadVersionBadge() {
   const el = document.getElementById('liveVersionBadge');
@@ -326,9 +358,13 @@ async function loadVersionBadge() {
 // stuck request reliably gives up (and can be retried — see
 // saveCurrentMatch) well before that happens.
 const FETCH_TIMEOUT_MS = 20000;
-async function fetchWithTimeout(url, options) {
+// Reads (GETs) get their own, longer timeout — see apiGet below for why a
+// tighter one can actually make real concurrent-load slowness worse rather
+// than better.
+const GET_TIMEOUT_MS = 35000;
+async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs || FETCH_TIMEOUT_MS);
   try {
     return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
   } finally {
@@ -338,11 +374,22 @@ async function fetchWithTimeout(url, options) {
 // GETs never change anything server-side, so — unlike apiPost, which leaves
 // retrying to whichever caller knows it's safe to repeat that particular
 // action (see saveCurrentMatch) — it's always safe for apiGet to quietly
-// retry on its own. loadShared() below fires 7 of these at once at boot; one
-// of them being slow to answer used to be enough to fail the whole batch and
-// leave the entry gate stuck on "Checking…" until the page was reloaded —
-// this closes that gap at the source instead of relying on the person to
-// notice and retry.
+// retry on its own. loadShared() below fires it (now just once, via
+// getBootData) at boot; a slow answer used to be enough to fail the whole
+// load and leave the entry gate stuck on "Checking…" until the page was
+// reloaded — this closes that gap at the source instead of relying on the
+// person to notice and retry.
+//
+// The timeout here is deliberately longer than a POST's (35s vs. 20s) and
+// the backoff between attempts has some randomness (jitter) mixed in. Both
+// of those are specifically about the tournament-day scenario of several
+// phones loading at once: these reads don't take a lock, so a slow one just
+// means Apps Script itself is busy, not stuck — cutting it off too early and
+// firing a retry doesn't relieve that load, it adds another request
+// competing for the same busy backend. A longer timeout gives an
+// already-in-flight request more room to just finish; jitter keeps several
+// phones that all timed out at the same moment from all retrying in the same
+// instant and re-colliding.
 async function apiGet(action, extra) {
   const params = new URLSearchParams(Object.assign({ action, key: CFG.key }, extra || {}));
   const url = CFG.backendUrl + '?' + params.toString();
@@ -350,11 +397,11 @@ async function apiGet(action, extra) {
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const res = await fetchWithTimeout(url);
+      const res = await fetchWithTimeout(url, undefined, GET_TIMEOUT_MS);
       return await res.json();
     } catch (e) {
       lastError = e;
-      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500 * attempt));
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500 * attempt + Math.random() * 500));
     }
   }
   throw lastError;
@@ -450,37 +497,20 @@ function loadCachedShared_() {
     return raw ? JSON.parse(raw) : null;
   } catch (e) { return null; }
 }
-function saveCachedShared_() {
+function saveCachedShared_(bootData) {
   try {
-    localStorage.setItem(SHARED_CACHE_KEY, JSON.stringify({ settings, roster, holeHC, pairings, matchPins }));
+    localStorage.setItem(SHARED_CACHE_KEY, JSON.stringify(bootData));
   } catch (e) { /* storage full/unavailable — page still works, just without an instant paint next load */ }
 }
-// Applies a cached (or freshly-loaded) snapshot to the shared module state
-// and the bits of UI that don't need anything else to have run first —
-// shared by both the instant-paint-from-cache path in boot() below and the
-// real loadShared() fetch, so there's exactly one place that knows how to
-// turn this data into on-screen state.
-function applySharedSnapshot_(snap) {
-  if (!snap) return;
-  if (snap.settings) { settings = snap.settings; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; applyTeamColorVars(); }
-  if (snap.roster) { roster = snap.roster; indexRoster(); }
-  if (snap.holeHC) holeHC = snap.holeHC;
-  if (snap.pairings) pairings = snap.pairings;
-  if (snap.matchPins) matchPins = snap.matchPins;
-}
-// Used to fire 7 separate apiGet calls in parallel (getSettings, getRoster,
-// both hole-handicap tables, both days' pairings, getMatchPins) — measured
-// at ~16s on a live test. Each one makes the backend open the Spreadsheet by
-// ID from scratch before it can read anything, and Apps Script's own
-// per-project concurrency limits mean "7 in parallel" isn't really parallel
-// server-side. A single getBootData action (added to Code.gs alongside this
-// change — both need to be deployed together) bundles all 7 into one
-// request/one spreadsheet open, cutting a ~16s load down to roughly what one
-// of those 7 used to take on its own.
-async function loadShared() {
-  const res = await apiGet('getBootData');
-  if (!res.success) throw new Error(res.error || 'Could not load tournament data');
-  const d = res.data;
+// Applies a boot-data snapshot — in the same raw shape apiGet('getBootData')
+// returns — to the shared module state and the bits of UI that don't need
+// anything else to have run first. One function, one shape, used
+// identically no matter which of the three sources it came from: this
+// device's own last-known-good cache, the EMBEDDED_SNAPSHOT baked into this
+// file, or a fresh live fetch (see loadShared below) — so there's exactly
+// one place that knows how to turn boot data into on-screen state.
+function applySharedSnapshot_(d) {
+  if (!d) return;
   if (d.settings) { settings = d.settings; document.getElementById('tournamentTitle').textContent = settings.TournamentName || 'Heritage Legends Tournament'; applyTeamColorVars(); }
   if (d.roster) { roster = d.roster; indexRoster(); }
   if (d.holeHandicaps) {
@@ -494,11 +524,24 @@ async function loadShared() {
   if (d.pairings1) pairings['1'] = d.pairings1;
   if (d.pairings2) pairings['2'] = d.pairings2;
   if (d.matchPins) matchPins = d.matchPins;
+}
+// Used to fire 7 separate apiGet calls in parallel (getSettings, getRoster,
+// both hole-handicap tables, both days' pairings, getMatchPins) — measured
+// at ~16s on a live test. Each one makes the backend open the Spreadsheet by
+// ID from scratch before it can read anything, and Apps Script's own
+// per-project concurrency limits mean "7 in parallel" isn't really parallel
+// server-side. A single getBootData action (added to Code.gs alongside that
+// change) bundles all 7 into one request/one spreadsheet open, cutting a
+// ~16s load down to roughly what one of those 7 used to take on its own.
+async function loadShared() {
+  const res = await apiGet('getBootData');
+  if (!res.success) throw new Error(res.error || 'Could not load tournament data');
+  applySharedSnapshot_(res.data);
   // Cache this fresh snapshot for next time — purely a head start for the
   // NEXT page load (see boot() below); this fetch always runs regardless of
-  // what was cached, and its result always wins over whatever was painted
-  // from cache.
-  saveCachedShared_();
+  // what was painted from cache or EMBEDDED_SNAPSHOT, and its result always
+  // wins over both.
+  saveCachedShared_(res.data);
 }
 
 function teamNames() {
@@ -1882,15 +1925,64 @@ function formatTotals(day, res) {
 // instead of one specific match — so the middle "Match" column names the
 // format instead of a live status badge, and the pairing columns are blank
 // (there's no one pairing to name once results are pooled across matches).
+// Per-match/matchup rows behind the "Show match detail" toggle below the
+// pooled Two Day Total table — that table pools every match into one number
+// per format (Day 1 and Day 2 pairings aren't guaranteed to be the same
+// foursome from one day to the next, so a single combined per-match row
+// isn't meaningful — see the note on formatTotals above), but people still
+// want to see which specific matches are behind that pooled number.
+// segIndexes lets Day 2's "Individual Match Play" pull in both the MP1 and
+// MP2 matchups as separate rows (each is its own head-to-head, distinct from
+// the Best Ball pairing they're part of) while every other format is a
+// single segIndex.
+function tournamentFormatDetailRows(day, segIndexes, res) {
+  const scoresByMatch = {};
+  if (res.success) res.data.forEach((r) => { (scoresByMatch[r.MatchNum] = scoresByMatch[r.MatchNum] || []).push(r); });
+  const out = [];
+  (pairings[day] || []).filter(hasPlayersLb).forEach((row) => {
+    const { segs, segNames } = matchSegmentInfo(day, row, scoresByMatch);
+    segIndexes.forEach((segIndex) => {
+      const seg = segs[segIndex];
+      if (!seg) return;
+      out.push({ matchNum: row.MatchNum, seg, aName: segNames[segIndex][0], bName: segNames[segIndex][1] });
+    });
+  });
+  return out;
+}
+function formatDetailTableHtml(label, day, segIndexes, res) {
+  const rows = tournamentFormatDetailRows(day, segIndexes, res);
+  if (!rows.length) return '';
+  const rowsHtml = rows.map(({ matchNum, seg, aName, bName }) => `<tr>
+    <td class="lbx-pts">${seg.final ? formatPts(seg.points.A) : '&ndash;'}</td>
+    <td class="lbx-pair"><div class="lbx-names">${escapeHtml(aName)}</div><div class="lbx-matchnum">Match ${escapeHtml(matchNum)}</div></td>
+    <td class="lbx-match">${segStatusBadgeHtml(seg, aName, bName)}</td>
+    <td class="lbx-pair"><div class="lbx-names">${escapeHtml(bName)}</div><div class="lbx-matchnum">Match ${escapeHtml(matchNum)}</div></td>
+    <td class="lbx-pts">${seg.final ? formatPts(seg.points.B) : '&ndash;'}</td>
+  </tr>`).join('');
+  return `
+    <div class="lbx-detail-section">
+      <div class="hbh-seglabel">${escapeHtml(label)} &mdash; Day ${escapeHtml(day)}</div>
+      <div class="lbx-wrap">
+        <table class="lbx-table"><tbody>${rowsHtml}</tbody></table>
+      </div>
+    </div>`;
+}
+function toggleTdtDetail() {
+  const el = document.getElementById('tdtDetail');
+  const btn = document.getElementById('tdtToggleBtn');
+  if (!el || !btn) return;
+  el.hidden = !el.hidden;
+  btn.innerHTML = el.hidden ? 'Show match detail &#9662;' : 'Hide match detail &#9652;';
+}
 async function loadTournamentTotal() {
   const [res1, res2] = await Promise.all([apiGet('getScores', { day: '1' }), apiGet('getScores', { day: '2' })]);
   const d1 = formatTotals('1', res1), d2 = formatTotals('2', res2);
   const names = teamNames();
   const formatRows = [
-    ["Captain's Choice", d1.captainsChoice],
-    ['Modified Alternate Shot', d1.altShot],
-    ['Best Ball', d2.bestBall],
-    ['Individual Match Play', d2.matchPlay],
+    ["Captain's Choice", d1.captainsChoice, '1', [0], res1],
+    ['Modified Alternate Shot', d1.altShot, '1', [1], res1],
+    ['Best Ball', d2.bestBall, '2', [0], res2],
+    ['Individual Match Play', d2.matchPlay, '2', [1, 2], res2],
   ];
   const grandA = formatRows.reduce((sum, [, pts]) => sum + pts.A, 0);
   const grandB = formatRows.reduce((sum, [, pts]) => sum + pts.B, 0);
@@ -1904,6 +1996,7 @@ async function loadTournamentTotal() {
       <td class="lbx-pts ${bAhead ? 'lbx-lead-b' : ''}"><span class="lbx-pts-total" style="border-top:none; margin-top:0; padding-top:0;">${formatPts(pts.B)}</span></td>
     </tr>`;
   }).join('');
+  const detailHtml = formatRows.map(([label, , day, segIndexes, res]) => formatDetailTableHtml(label, day, segIndexes, res)).join('');
   document.getElementById('sbLeaderboard').innerHTML = `
     <div class="lbx-wrap">
       <table class="lbx-table">
@@ -1914,6 +2007,10 @@ async function loadTournamentTotal() {
         <tfoot><tr class="lbx-total"><td>${formatPts(grandA)}</td><td class="lbx-pair-h">${teamNameHtml(names.A, teamColors().A)}</td><td>TOTAL</td><td class="lbx-pair-h">${teamNameHtml(names.B, teamColors().B)}</td><td>${formatPts(grandB)}</td></tr></tfoot>
       </table>
     </div>
+    <div class="lbx-detail-toggle-row">
+      <button type="button" class="view-toggle-btn" id="tdtToggleBtn" onclick="toggleTdtDetail()">Show match detail &#9662;</button>
+    </div>
+    <div id="tdtDetail" hidden>${detailHtml || '<div class="hint">No match detail yet.</div>'}</div>
   `;
 }
 
@@ -2172,12 +2269,23 @@ async function submitGatePin() {
   if (!entered) { errEl.textContent = 'Enter your PIN, or tap "I don\'t have a PIN" below.'; return; }
   errEl.textContent = 'Checking…';
   input.disabled = true;
-  try {
-    await ensureSharedData(); // pairings/matchPins (and AdminPIN, via settings) may still be loading
-  } catch (e) {
-    input.disabled = false;
-    errEl.textContent = 'Could not reach the tournament server — check your connection and try again.';
-    return;
+  // If cache or the embedded snapshot already gave us real data to check
+  // against (bootDataReady), don't make someone wait on a network round
+  // trip just to check a PIN — that's exactly the wait that was causing
+  // logins to fail outright under real tournament-day load. The live fetch
+  // is already running in the background (kicked off at page load) and will
+  // quietly take over moments later if anything's actually different (a
+  // corrected PIN, a last-minute lineup swap). Only when neither cache nor
+  // snapshot exists yet — this phone's genuine first-ever load, with no
+  // snapshot baked into the file either — does a PIN check have to wait.
+  if (!bootDataReady) {
+    try {
+      await ensureSharedData(); // pairings/matchPins (and AdminPIN, via settings) may still be loading
+    } catch (e) {
+      input.disabled = false;
+      errEl.textContent = 'Could not reach the tournament server — check your connection and try again.';
+      return;
+    }
   }
   input.disabled = false;
   const adminPin = String((settings && settings.AdminPIN) || '').trim();
@@ -2210,15 +2318,33 @@ async function submitGatePin() {
 document.getElementById('gatePinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitGatePin(); });
 
 // ====================== BOOT ======================
-// Paint instantly from whatever settings/roster/pairings were last
-// successfully loaded on this device (if anything), while the real fetch
-// below runs in the background — avoids a blank/unusable Day-Match picker on
-// a slow connection. Deliberately excludes match scores: those always come
-// from the live fetch in onScMatchSelected below, never from this cache,
+// Paint instantly from whatever settings/roster/pairings/PINs are already
+// available, while the real fetch below runs in the background — avoids a
+// blank/unusable Day-Match picker (and a PIN check with nothing to check
+// against) on a slow connection. Two possible sources, checked in this
+// order: this device's own last-known-good cache (from a previous
+// successful load — necessarily the most recent of the two, since it's only
+// ever written right after a real fetch succeeds), or, if this device has
+// never loaded successfully before, the EMBEDDED_SNAPSHOT baked into this
+// file. Deliberately excludes match scores either way: those always come
+// from the live fetch in onScMatchSelected below, never from cache/snapshot,
 // since showing a stale score would be actively worse than a brief wait for
 // the real one.
 const cachedShared = loadCachedShared_();
-if (cachedShared) applySharedSnapshot_(cachedShared);
+const bootSeed = cachedShared || (EMBEDDED_SNAPSHOT && Object.keys(EMBEDDED_SNAPSHOT).length ? EMBEDDED_SNAPSHOT : null);
+// Wrapped defensively: this runs synchronously at the top of the page's own
+// script, so an exception here (a hand-edited or malformed paste into
+// EMBEDDED_SNAPSHOT, say) would otherwise abort every statement after it in
+// this file, including kicking off the real fetch below — the one thing
+// that can still recover from a bad snapshot.
+if (bootSeed) { try { applySharedSnapshot_(bootSeed); } catch (e) { console.error('Could not apply boot seed', e); } }
+
+// True once settings/roster/pairings/matchPins reflect SOME real data —
+// cache or the embedded snapshot at boot, or (once it resolves) the live
+// fetch below. submitGatePin uses this to decide whether a PIN check can be
+// answered immediately against whatever's already loaded, instead of making
+// someone wait on a network round trip — see there for why that matters.
+let bootDataReady = !!bootSeed;
 
 // Started immediately (not inside boot() below) so the entry gate's PIN
 // lookup can await this same promise without waiting on loadVersionBadge or
@@ -2233,6 +2359,7 @@ if (cachedShared) applySharedSnapshot_(cachedShared);
 // signal at the exact wrong moment shouldn't need a manual page reload),
 // and only then leaves the rejection for its caller to show/handle.
 let sharedDataPromise = loadShared();
+sharedDataPromise.then(() => { bootDataReady = true; }, () => {});
 async function ensureSharedData() {
   try {
     await sharedDataPromise;
@@ -2240,22 +2367,24 @@ async function ensureSharedData() {
     sharedDataPromise = loadShared();
     await sharedDataPromise;
   }
+  bootDataReady = true;
 }
 (async function boot() {
   loadVersionBadge();
-  if (cachedShared) populateMatchDropdown(); // instant paint of the Day/Match picker from cache
+  if (bootSeed) populateMatchDropdown(); // instant paint of the Day/Match picker from cache or the embedded snapshot
   try {
     await ensureSharedData();
   } catch (e) {
-    // Real outage: leave whatever was painted from cache (if any) on screen
-    // rather than throwing away a usable-if-stale page. If there was no
-    // cache either (a phone's first-ever load), the Day/Match picker just
-    // stays empty — submitGatePin's own catch below is what tells the
-    // person what's wrong when they try to continue.
+    // Real outage: leave whatever was painted from cache/snapshot (if any)
+    // on screen rather than throwing away a usable-if-stale page. If there
+    // was neither (a phone's first-ever load with no snapshot baked in
+    // either), the Day/Match picker just stays empty — submitGatePin's own
+    // catch below is what tells the person what's wrong when they try to
+    // continue.
     console.error('Could not load tournament data', e);
     return;
   }
-  populateMatchDropdown(); // re-run against the real data — always wins over whatever was cached
+  populateMatchDropdown(); // re-run against the real data — always wins over whatever was painted first
   await onScMatchSelected();
 })();
 </script>

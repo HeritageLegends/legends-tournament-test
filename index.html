@@ -142,6 +142,23 @@
         <div id="settingsStatus" class="status"></div>
       </div>
 
+      <div class="card" style="border: 1px solid #1565c0;">
+        <h2 style="color:#1565c0;">Tournament Day Snapshot</h2>
+        <p class="hint">Once rosters, pairings, and PINs are finalized for the event (or for the day), click this
+          to generate a block of text to paste into both <code>index.html</code> and <code>live.html</code>,
+          replacing the SNAPSHOT block near the top of each. It lets everyone's very first login load instantly
+          from data baked into the page instead of waiting on Google — the biggest help right at the moment
+          everyone opens the app at once. It only covers Settings/Roster/Pairings/PINs, never live scores, so
+          nothing about mid-round play depends on this. Regenerate it once before Day 1 (after pairings for
+          <em>both</em> days and all PINs are set — both days' pairings load together regardless of which day is
+          being played), and again only if you change something in Settings/Roster/Pairings/PINs after that. An
+          out-of-date snapshot isn't harmful — it just means that one detail briefly shows the old value on a
+          first login before the normal live check corrects it a moment later, same as always.</p>
+        <button class="primary" onclick="copyTournamentSnapshot()">Copy Tournament Snapshot</button>
+        <div id="snapshotStatus" class="status"></div>
+        <textarea id="snapshotOutput" readonly style="width:100%; height:140px; margin-top:10px; font-family:monospace; font-size:0.72rem; display:none;"></textarea>
+      </div>
+
       <div class="card">
         <h2>Admin PIN</h2>
         <p class="hint">This is the PIN this page asks for on the gate screen you just got past. Changing it here updates it for anyone using this link — test and live can have different PINs, since each has its own PIN stored in its own Google Sheet.</p>
@@ -347,11 +364,28 @@ const CONFIG = {
   test: { backendUrl: 'https://script.google.com/macros/s/AKfycbzw4xeOOwP09RCrILvt5P9iT9S8mpJXLzggO7NrzvEQy-bR-Qtn1-1tEfbEzeRTpQ/exec', key: '8O`I!r5]Hx26' },
   live: { backendUrl: 'https://script.google.com/macros/s/AKfycbxsxCCuBXz-mbDUlVlxL-_V4YtuWqlEl0Q3J4L_z4sN6aiYkB1PvZlHDNLOS4Lh8Wbb/exec', key: '&wW3d@j>3£56' },
 };
+// Regenerate this from the "Copy Tournament Snapshot" button on the Settings
+// tab before match day, and paste the whole block — start marker, the const,
+// and end marker — over this one, in BOTH this file and live.html. It's
+// exactly the shape apiGet('getBootData') returns. Once pairings/rosters/
+// PINs are finalized, this lets this page's own dashboard (and, in
+// live.html, a scorekeeper's very first login) paint instantly from data
+// already sitting in the page instead of waiting on Google — the biggest
+// help right at the moment everyone opens the app at once. It only covers
+// settings/roster/pairings/PINs, never live scores, so nothing about
+// mid-round play depends on it, and an out-of-date snapshot isn't harmful —
+// the real fetch that runs alongside it (see init() below) always wins
+// moments later regardless. An empty object here is completely fine.
+// ===== SNAPSHOT START =====
+const EMBEDDED_SNAPSHOT = {};
+// ===== SNAPSHOT END — paste this whole block (all three marked lines and
+//   everything between them) over the old SNAPSHOT block, in BOTH
+//   index.html and live.html =====
 // Bumped by hand every time this file changes — shown in the header next to
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-22c';
+const ADMIN_VERSION = '2026-09-23b';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -414,9 +448,13 @@ document.getElementById('pinInput').addEventListener('keydown', (e) => { if (e.k
 // legitimately-still-processing startNewSeason_ can't get aborted right as
 // it's about to finish.
 const FETCH_TIMEOUT_MS = 25000;
-async function fetchWithTimeout(url, options) {
+// Reads (GETs) get their own, longer timeout — see apiGet below for why a
+// tighter one can actually make real concurrent-load slowness worse rather
+// than better.
+const GET_TIMEOUT_MS = 35000;
+async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs || FETCH_TIMEOUT_MS);
   try {
     return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
   } finally {
@@ -431,6 +469,16 @@ async function fetchWithTimeout(url, options) {
 // reason" Tom saw, then didn't see on a second try): instead of making a
 // person notice the failure and manually try again, a transient hiccup now
 // self-heals inside the same call.
+//
+// The timeout here is deliberately longer than a POST's (35s vs. 25s) and
+// the backoff between attempts has some randomness (jitter) mixed in. Both
+// are about several phones loading at once on tournament day: these reads
+// don't take a lock, so a slow one just means Apps Script itself is busy,
+// not stuck — cutting it off too early and firing a retry doesn't relieve
+// that load, it adds another request competing for the same busy backend. A
+// longer timeout gives an already-in-flight request more room to just
+// finish; jitter keeps several phones that all timed out at the same moment
+// from all retrying in the same instant and re-colliding.
 async function apiGet(action, extra) {
   const params = new URLSearchParams(Object.assign({ action, key: CFG.key }, extra || {}));
   const url = CFG.backendUrl + '?' + params.toString();
@@ -438,11 +486,11 @@ async function apiGet(action, extra) {
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const res = await fetchWithTimeout(url);
+      const res = await fetchWithTimeout(url, undefined, GET_TIMEOUT_MS);
       return await res.json();
     } catch (e) {
       lastError = e;
-      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500 * attempt));
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500 * attempt + Math.random() * 500));
     }
   }
   throw lastError;
@@ -516,14 +564,13 @@ async function loadVersionBadge() {
 // total) in parallel — the same pattern live.html's loadShared() had, and
 // the same ~16s load time it caused on a live test (see the note on
 // getBootData_ in Code.gs). One combined request now does the same job.
-async function init() {
-  loadVersionBadge();
-  const res = await apiGet('getBootData');
-  if (!res.success) {
-    document.getElementById('printStatus').textContent = 'Could not load tournament data: ' + (res.error || 'unknown error') + ' — try reloading.';
-    return;
-  }
-  const d = res.data;
+// Applies a boot-data snapshot — in the same raw shape apiGet('getBootData')
+// returns — to every tab's own state and re-renders it. One function, used
+// identically whether it's the EMBEDDED_SNAPSHOT baked into this file (for
+// an instant first paint — see init() below) or the real fetch that follows
+// it, so there's exactly one place that knows how to turn boot data into
+// on-screen state, and the real fetch's result always wins when it lands.
+function applyBootData_(d) {
   settings = d.settings;
   populateSettingsForm();
   roster = d.roster;
@@ -538,6 +585,25 @@ async function init() {
   renderPairings('1');
   renderPairings('2');
   populatePrintMatchSelect();
+}
+async function init() {
+  loadVersionBadge();
+  // Paint instantly from the snapshot baked into this file (if one's been
+  // generated — see the "Copy Tournament Snapshot" button on the Settings
+  // tab) while the real fetch below runs — same idea as live.html's
+  // device-cache-first paint, just without a cache tier here since only a
+  // couple of people ever open this page.
+  if (EMBEDDED_SNAPSHOT && Object.keys(EMBEDDED_SNAPSHOT).length) {
+    // Wrapped defensively: a malformed/partial paste into EMBEDDED_SNAPSHOT
+    // shouldn't be able to stop the real fetch just below this from running.
+    try { applyBootData_(EMBEDDED_SNAPSHOT); } catch (e) { console.error('Could not apply boot seed', e); }
+  }
+  const res = await apiGet('getBootData');
+  if (!res.success) {
+    document.getElementById('printStatus').textContent = 'Could not load tournament data: ' + (res.error || 'unknown error') + ' — try reloading.';
+    return;
+  }
+  applyBootData_(res.data);
 }
 
 // ====================== HOLE HANDICAPS TAB ======================
@@ -712,6 +778,49 @@ async function saveSettings() {
     }
   } catch (err) {
     showStatus('settingsStatus', false, 'Network error: ' + err.message);
+  }
+}
+
+// Generates the paste-ready SNAPSHOT block described in the card above — the
+// exact same shape apiGet('getBootData') already returns, wrapped in the
+// start/end markers both files' EMBEDDED_SNAPSHOT is looking for so it's
+// obvious what to select when pasting over the old one. Copies it to the
+// clipboard when the browser allows it; either way it's also shown in the
+// box below so it can be selected and copied by hand if the automatic copy
+// doesn't go through (some phone browsers block it outside a very direct tap
+// response).
+async function copyTournamentSnapshot() {
+  const statusEl = document.getElementById('snapshotStatus');
+  const outputEl = document.getElementById('snapshotOutput');
+  statusEl.className = 'status';
+  statusEl.textContent = 'Fetching current data…';
+  outputEl.style.display = 'none';
+  let res;
+  try {
+    res = await apiGet('getBootData');
+  } catch (err) {
+    showStatus('snapshotStatus', false, 'Could not fetch current data: ' + err.message);
+    return;
+  }
+  if (!res.success) {
+    showStatus('snapshotStatus', false, res.error || 'Could not fetch current data.');
+    return;
+  }
+  const text = '// ===== SNAPSHOT START =====\n'
+    + 'const EMBEDDED_SNAPSHOT = ' + JSON.stringify(res.data, null, 2) + ';\n'
+    + '// ===== SNAPSHOT END — paste this whole block (all three marked lines and\n'
+    + '//   everything between them) over the old SNAPSHOT block, in BOTH\n'
+    + '//   index.html and live.html =====';
+  outputEl.value = text;
+  outputEl.style.display = 'block';
+  try {
+    await navigator.clipboard.writeText(text);
+    showStatus('snapshotStatus', true, `Copied (as of ${new Date().toLocaleString()}) — paste it over the SNAPSHOT block in both index.html and live.html.`);
+  } catch (err) {
+    statusEl.className = 'status';
+    statusEl.textContent = 'Could not copy automatically — select the text below and copy it by hand.';
+    outputEl.focus();
+    outputEl.select();
   }
 }
 
