@@ -71,6 +71,16 @@
   }
   .gate input { text-align: center; font-size: 1.2rem; letter-spacing: 2px; }
   [hidden] { display: none !important; }
+  .live-banner {
+    position: sticky; top: 0; z-index: 9999; background: #ffd400; color: #3a2e00;
+    font-weight: 600; text-align: center; padding: 10px 40px 10px 14px; font-size: 0.95rem;
+  }
+  .live-banner a { color: #3a2e00; }
+  .live-banner-close {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; font-size: 1.3rem; line-height: 1; cursor: pointer;
+    color: #3a2e00; padding: 4px 8px;
+  }
   #rosterTable { table-layout: fixed; }
   .roster-team-col { width: 220px; }
   .roster-narrow-col { width: 80px; }
@@ -83,6 +93,15 @@
 </style>
 </head>
 <body>
+
+<!-- Shown only on the TEST site, only once the tournament has actually
+     started (see LIVE_BANNER below) — nudges anyone still on the test link
+     over to the real one. Dismissible for the rest of that browser tab's
+     session; reappears on a fresh visit. -->
+<div id="liveBanner" class="live-banner" hidden>
+  🏌️ The tournament is live — <a id="liveBannerLink" href="#" target="_blank" rel="noopener">use this link instead</a>
+  <button type="button" class="live-banner-close" onclick="dismissLiveBanner()" aria-label="Dismiss">×</button>
+</div>
 
 <div id="gate" class="gate">
   <h2>Legends Tournament Admin</h2>
@@ -397,7 +416,7 @@ const EMBEDDED_SNAPSHOT = {
   "roster": [
     {
       "PlayerID": 1,
-      "Name": "Nicklaus, Jack",
+      "Name": "Alston, Rufus",
       "Team": "A",
       "HandicapIndex": 24.1,
       "Tee": "Red",
@@ -406,7 +425,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 2,
-      "Name": "Woods, Tiger",
+      "Name": "Anderson, Mike",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -415,16 +434,16 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 3,
-      "Name": "Hogan, Ben",
+      "Name": "Bacca, Tom",
       "Team": "B",
       "HandicapIndex": 14.2,
       "Tee": "Red",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 4,
-      "Name": "Hagen, Walter",
+      "Name": "Buchanan, Buck",
       "Team": "A",
       "HandicapIndex": 20.9,
       "Tee": "Red",
@@ -433,7 +452,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 5,
-      "Name": "Player, Gary",
+      "Name": "Cobb, Randy",
       "Team": "A",
       "HandicapIndex": 14.2,
       "Tee": "Red",
@@ -442,16 +461,16 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 6,
-      "Name": "Snead, Sam",
+      "Name": "Colt, Dave",
       "Team": "B",
       "HandicapIndex": 9.9,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 7,
-      "Name": "Watson, Tom",
+      "Name": "Davis, Jay",
       "Team": "B",
       "HandicapIndex": 24,
       "Tee": "Gold",
@@ -460,7 +479,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 8,
-      "Name": "Palmer, Arnold",
+      "Name": "Davis, Larry",
       "Team": "B",
       "HandicapIndex": 16.1,
       "Tee": "Red",
@@ -469,7 +488,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 9,
-      "Name": "Jones, Bobby",
+      "Name": "DeLisle, Jeffrey",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -478,16 +497,16 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 10,
-      "Name": "Vardon, Harry",
+      "Name": "Dillon, Eric",
       "Team": "B",
       "HandicapIndex": 11.8,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 11,
-      "Name": "Sarazen, Gene",
+      "Name": "Dunbar, Bob",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -496,7 +515,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 12,
-      "Name": "Nelson, Byron",
+      "Name": "Eiloo, Gary",
       "Team": "B",
       "HandicapIndex": 21.9,
       "Tee": "Red",
@@ -505,7 +524,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 13,
-      "Name": "Ballesteros, Seve",
+      "Name": "Grosso, Bob",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -514,16 +533,16 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 14,
-      "Name": "Faldo, Nick",
+      "Name": "Gurganus, Tom",
       "Team": "A",
       "HandicapIndex": 19.8,
       "Tee": "Red",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 15,
-      "Name": "Trevino, Lee",
+      "Name": "Haines, Dan",
       "Team": "A",
       "HandicapIndex": 16,
       "Tee": "Gold",
@@ -532,7 +551,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 16,
-      "Name": "Mickelson, Phil",
+      "Name": "Harris, John",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -541,7 +560,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 17,
-      "Name": "McIlroy, Rory",
+      "Name": "Haskell, Ralf",
       "Team": "A",
       "HandicapIndex": 20.4,
       "Tee": "Red",
@@ -550,7 +569,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 18,
-      "Name": "Thomson, Peter",
+      "Name": "Hood, Chuck",
       "Team": "A",
       "HandicapIndex": 24.2,
       "Tee": "Red",
@@ -559,7 +578,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 19,
-      "Name": "Scheffler, Scottie",
+      "Name": "Hope, Bob",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -568,7 +587,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 20,
-      "Name": "Koepka, Brooks",
+      "Name": "Houseworth, Chuck",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -577,7 +596,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 21,
-      "Name": "Casper, Billy",
+      "Name": "Kalloway, Ken",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -586,7 +605,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 22,
-      "Name": "Floyd, Raymond",
+      "Name": "Kimball, Charles",
       "Team": "A",
       "HandicapIndex": 16.1,
       "Tee": "Red",
@@ -595,7 +614,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 23,
-      "Name": "Els, Ernie",
+      "Name": "Kloepfer, Bill",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -604,16 +623,16 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 24,
-      "Name": "Singh, Vijay",
+      "Name": "Kusilek, Kevin",
       "Team": "A",
       "HandicapIndex": 8.7,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 25,
-      "Name": "Price, Nick",
+      "Name": "Landry, Paul",
       "Team": "A",
       "HandicapIndex": 19.8,
       "Tee": "Red",
@@ -622,7 +641,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 26,
-      "Name": "Norman, Greg",
+      "Name": "Latus, Stephen",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -631,16 +650,16 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 27,
-      "Name": "Irwin, Hale",
+      "Name": "Lionelli, Tom",
       "Team": "A",
       "HandicapIndex": 9,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 28,
-      "Name": "Miller, Johnny",
+      "Name": "Luksis, Duke",
       "Team": "B",
       "HandicapIndex": 11.9,
       "Tee": "Gold",
@@ -649,7 +668,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 29,
-      "Name": "Strange, Curtis",
+      "Name": "McCulloch, Wayne",
       "Team": "B",
       "HandicapIndex": 12.5,
       "Tee": "Red",
@@ -658,7 +677,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 30,
-      "Name": "Nelson, Larry",
+      "Name": "McEver, John",
       "Team": "A",
       "HandicapIndex": 29.5,
       "Tee": "Red",
@@ -667,7 +686,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 31,
-      "Name": "Boros, Julius",
+      "Name": "McFarland, Don",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -676,7 +695,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 32,
-      "Name": "Middlecoff, Cary",
+      "Name": "McGuffin, Gary",
       "Team": "A",
       "HandicapIndex": 13.4,
       "Tee": "Gold",
@@ -685,7 +704,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 33,
-      "Name": "Barnes, Jim",
+      "Name": "Moreland, Greg",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -694,7 +713,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 34,
-      "Name": "Anderson, Willie",
+      "Name": "Nelson, Ellis",
       "Team": "B",
       "HandicapIndex": 15.9,
       "Tee": "Gold",
@@ -703,7 +722,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 35,
-      "Name": "Taylor, J.H.",
+      "Name": "Neumann, Pete",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -712,7 +731,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 36,
-      "Name": "Braid, James",
+      "Name": "Owens, Bill",
       "Team": "A",
       "HandicapIndex": 21.4,
       "Tee": "Gold",
@@ -721,7 +740,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 37,
-      "Name": "Morris, OldTom",
+      "Name": "Peverill, Lou",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -730,7 +749,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 38,
-      "Name": "Morris, YoungTom",
+      "Name": "Primm, Kirby",
       "Team": "A",
       "HandicapIndex": 11.1,
       "Tee": "Gold",
@@ -739,16 +758,16 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 39,
-      "Name": "Cotton, Henry",
+      "Name": "Recchia, John",
       "Team": "B",
       "HandicapIndex": 12.9,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 40,
-      "Name": "Furyk, Jim",
+      "Name": "Rich, Ron",
       "Team": "B",
       "HandicapIndex": 25.4,
       "Tee": "Red",
@@ -757,7 +776,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 41,
-      "Name": "Harrington, Padraig",
+      "Name": "Roane, Michael",
       "Team": "B",
       "HandicapIndex": 14.4,
       "Tee": "Gold",
@@ -766,7 +785,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 42,
-      "Name": "Goosen, Retief",
+      "Name": "Rogers, Henry",
       "Team": "B",
       "HandicapIndex": 20.1,
       "Tee": "Red",
@@ -775,7 +794,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 43,
-      "Name": "Cabrera, Angel",
+      "Name": "Rowinski, Al",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -784,7 +803,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 44,
-      "Name": "Love, Davis III",
+      "Name": "Salisbury, Jim",
       "Team": "B",
       "HandicapIndex": 22.4,
       "Tee": "Red",
@@ -793,7 +812,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 45,
-      "Name": "Couples, Fred",
+      "Name": "Schipani, Ray",
       "Team": "B",
       "HandicapIndex": 25.2,
       "Tee": "Red",
@@ -802,7 +821,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 46,
-      "Name": "Olazabal, Jose Maria",
+      "Name": "Shade, Winston",
       "Team": "B",
       "HandicapIndex": 7.3,
       "Tee": "Gold",
@@ -811,7 +830,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 47,
-      "Name": "Langer, Bernhard",
+      "Name": "Simpson, Dave",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -820,7 +839,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 48,
-      "Name": "Woosnam, Ian",
+      "Name": "Smith, Braxton",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -829,7 +848,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 49,
-      "Name": "Lyle, Sandy",
+      "Name": "Stewart, Jeff",
       "Team": "A",
       "HandicapIndex": 15.8,
       "Tee": "Gold",
@@ -838,7 +857,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 50,
-      "Name": "O'Meara, Mark",
+      "Name": "Striegel, Scott",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -847,7 +866,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 51,
-      "Name": "Duval, David",
+      "Name": "Sullivan, Tom",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -856,7 +875,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 52,
-      "Name": "Leonard, Justin",
+      "Name": "Swinson, Stan",
       "Team": "A",
       "HandicapIndex": 24,
       "Tee": "Gold",
@@ -865,7 +884,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 53,
-      "Name": "Rahm, Jon",
+      "Name": "Taylor, Percy",
       "Team": "ON_STANDBY",
       "HandicapIndex": 8.4,
       "Tee": "Red",
@@ -874,7 +893,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 54,
-      "Name": "Johnson, Dustin",
+      "Name": "Truszkowski, Mark",
       "Team": "A",
       "HandicapIndex": 18.6,
       "Tee": "Red",
@@ -883,7 +902,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 55,
-      "Name": "Thomas, Justin",
+      "Name": "Upfield, Mike",
       "Team": "B",
       "HandicapIndex": 21.4,
       "Tee": "Red",
@@ -892,7 +911,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 56,
-      "Name": "Schauffele, Xander",
+      "Name": "Urban, Irwin",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -901,7 +920,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 57,
-      "Name": "Morikawa, Collin",
+      "Name": "Visser, John",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -910,7 +929,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 58,
-      "Name": "Ouimet, Francis",
+      "Name": "Webster, Wayne",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -919,7 +938,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 59,
-      "Name": "De Vicenzo, Roberto",
+      "Name": "Woloski, John",
       "Team": "NOT_PLAYING",
       "HandicapIndex": "",
       "Tee": "",
@@ -928,7 +947,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 60,
-      "Name": "Charles, Bob",
+      "Name": "Woodard, Jim",
       "Team": "B",
       "HandicapIndex": 30.1,
       "Tee": "Red",
@@ -1105,192 +1124,192 @@ const EMBEDDED_SNAPSHOT = {
   "pairings1": [
     {
       "MatchNum": 1,
-      "TeamA_P1": "Nicklaus, Jack",
-      "TeamA_P2": "Price, Nick",
-      "TeamB_P1": "Hogan, Ben",
-      "TeamB_P2": "Cotton, Henry",
+      "TeamA_P1": "Kusilek, Kevin",
+      "TeamA_P2": "Cobb, Randy",
+      "TeamB_P1": "Colt, Dave",
+      "TeamB_P2": "McCulloch, Wayne",
       "StartHole": 13
     },
     {
       "MatchNum": 2,
-      "TeamA_P1": "Hagen, Walter",
-      "TeamA_P2": "Irwin, Hale",
-      "TeamB_P1": "Snead, Sam",
-      "TeamB_P2": "Furyk, Jim",
+      "TeamA_P1": "Lionelli, Tom",
+      "TeamA_P2": "Primm, Kirby",
+      "TeamB_P1": "Shade, Winston",
+      "TeamB_P2": "Luksis, Duke",
       "StartHole": "14a"
     },
     {
       "MatchNum": 3,
-      "TeamA_P1": "Player, Gary",
-      "TeamA_P2": "Nelson, Larry",
-      "TeamB_P1": "Watson, Tom",
-      "TeamB_P2": "Harrington, Padraig",
+      "TeamA_P1": "Stewart, Jeff",
+      "TeamA_P2": "Haines, Dan",
+      "TeamB_P1": "Recchia, John",
+      "TeamB_P2": "Dillon, Eric",
       "StartHole": "14b"
     },
     {
       "MatchNum": 4,
-      "TeamA_P1": "Faldo, Nick",
-      "TeamA_P2": "Middlecoff, Cary",
-      "TeamB_P1": "Palmer, Arnold",
-      "TeamB_P2": "Goosen, Retief",
+      "TeamA_P1": "McGuffin, Gary",
+      "TeamA_P2": "Truszkowski, Mark",
+      "TeamB_P1": "Bacca, Tom",
+      "TeamB_P2": "Davis, Jay",
       "StartHole": 15
     },
     {
       "MatchNum": 5,
-      "TeamA_P1": "Trevino, Lee",
-      "TeamA_P2": "Braid, James",
-      "TeamB_P1": "Vardon, Harry",
-      "TeamB_P2": "Love, Davis III",
+      "TeamA_P1": "Kimball, Charles",
+      "TeamA_P2": "Buchanan, Buck",
+      "TeamB_P1": "Salisbury, Jim",
+      "TeamB_P2": "Upfield, Mike",
       "StartHole": 16
     },
     {
       "MatchNum": 6,
-      "TeamA_P1": "McIlroy, Rory",
-      "TeamA_P2": "Morris, YoungTom",
-      "TeamB_P1": "Nelson, Byron",
-      "TeamB_P2": "Couples, Fred",
+      "TeamA_P1": "Gurganus, Tom",
+      "TeamA_P2": "Swinson, Stan",
+      "TeamB_P1": "Rogers, Henry",
+      "TeamB_P2": "Roane, Michael",
       "StartHole": 17
     },
     {
       "MatchNum": 7,
-      "TeamA_P1": "Thomson, Peter",
-      "TeamA_P2": "Lyle, Sandy",
-      "TeamB_P1": "Miller, Johnny",
-      "TeamB_P2": "Olazabal, Jose Maria",
+      "TeamA_P1": "Haskell, Ralf",
+      "TeamA_P2": "Owens, Bill",
+      "TeamB_P1": "Schipani, Ray",
+      "TeamB_P2": "Rich, Ron",
       "StartHole": "18a"
     },
     {
       "MatchNum": 8,
-      "TeamA_P1": "Floyd, Raymond",
-      "TeamA_P2": "Leonard, Justin",
-      "TeamB_P1": "Strange, Curtis",
-      "TeamB_P2": "Thomas, Justin",
+      "TeamA_P1": "Landry, Paul",
+      "TeamA_P2": "McEver, John",
+      "TeamB_P1": "Eiloo, Gary",
+      "TeamB_P2": "Davis, Larry",
       "StartHole": "18b"
     },
     {
       "MatchNum": 9,
-      "TeamA_P1": "Singh, Vijay",
-      "TeamA_P2": "Johnson, Dustin",
-      "TeamB_P1": "Anderson, Willie",
-      "TeamB_P2": "Charles, Bob",
+      "TeamA_P1": "Alston, Rufus",
+      "TeamA_P2": "Hood, Chuck",
+      "TeamB_P1": "Nelson, Ellis",
+      "TeamB_P2": "Woodard, Jim",
       "StartHole": 1
     }
   ],
   "pairings2": [
     {
       "MatchNum": 1,
-      "TeamA_P1": "Nicklaus, Jack",
-      "TeamA_P2": "Johnson, Dustin",
-      "TeamB_P1": "Hogan, Ben",
-      "TeamB_P2": "Charles, Bob",
-      "MP1_TeamA": "Nicklaus, Jack",
-      "MP1_TeamB": "Hogan, Ben",
-      "MP2_TeamA": "Johnson, Dustin",
-      "MP2_TeamB": "Charles, Bob",
+      "TeamA_P1": "Lionelli, Tom",
+      "TeamA_P2": "Kusilek, Kevin",
+      "TeamB_P1": "Colt, Dave",
+      "TeamB_P2": "Shade, Winston",
+      "MP1_TeamA": "Lionelli, Tom",
+      "MP1_TeamB": "Colt, Dave",
+      "MP2_TeamA": "Kusilek, Kevin",
+      "MP2_TeamB": "Shade, Winston",
       "MPSwapped": "",
       "StartHole": 13
     },
     {
       "MatchNum": 2,
-      "TeamA_P1": "Hagen, Walter",
-      "TeamA_P2": "Leonard, Justin",
-      "TeamB_P1": "Snead, Sam",
-      "TeamB_P2": "Thomas, Justin",
-      "MP1_TeamA": "Hagen, Walter",
-      "MP1_TeamB": "Snead, Sam",
-      "MP2_TeamA": "Leonard, Justin",
-      "MP2_TeamB": "Thomas, Justin",
+      "TeamA_P1": "Kimball, Charles",
+      "TeamA_P2": "Primm, Kirby",
+      "TeamB_P1": "McCulloch, Wayne",
+      "TeamB_P2": "Luksis, Duke",
+      "MP1_TeamA": "Kimball, Charles",
+      "MP1_TeamB": "McCulloch, Wayne",
+      "MP2_TeamA": "Primm, Kirby",
+      "MP2_TeamB": "Luksis, Duke",
       "MPSwapped": "",
       "StartHole": "14a"
     },
     {
       "MatchNum": 3,
-      "TeamA_P1": "Player, Gary",
-      "TeamA_P2": "Lyle, Sandy",
-      "TeamB_P1": "Watson, Tom",
-      "TeamB_P2": "Olazabal, Jose Maria",
-      "MP1_TeamA": "Player, Gary",
-      "MP1_TeamB": "Watson, Tom",
-      "MP2_TeamA": "Lyle, Sandy",
-      "MP2_TeamB": "Olazabal, Jose Maria",
+      "TeamA_P1": "Stewart, Jeff",
+      "TeamA_P2": "Owens, Bill",
+      "TeamB_P1": "Recchia, John",
+      "TeamB_P2": "Roane, Michael",
+      "MP1_TeamA": "Stewart, Jeff",
+      "MP1_TeamB": "Recchia, John",
+      "MP2_TeamA": "Owens, Bill",
+      "MP2_TeamB": "Roane, Michael",
       "MPSwapped": "",
       "StartHole": "14b"
     },
     {
       "MatchNum": 4,
-      "TeamA_P1": "Faldo, Nick",
-      "TeamA_P2": "Morris, YoungTom",
-      "TeamB_P1": "Palmer, Arnold",
-      "TeamB_P2": "Couples, Fred",
-      "MP1_TeamA": "Faldo, Nick",
-      "MP1_TeamB": "Palmer, Arnold",
-      "MP2_TeamA": "Morris, YoungTom",
-      "MP2_TeamB": "Couples, Fred",
+      "TeamA_P1": "Cobb, Randy",
+      "TeamA_P2": "Haines, Dan",
+      "TeamB_P1": "Bacca, Tom",
+      "TeamB_P2": "Dillon, Eric",
+      "MP1_TeamA": "Cobb, Randy",
+      "MP1_TeamB": "Bacca, Tom",
+      "MP2_TeamA": "Haines, Dan",
+      "MP2_TeamB": "Dillon, Eric",
       "MPSwapped": "",
       "StartHole": 15
     },
     {
       "MatchNum": 5,
-      "TeamA_P1": "Trevino, Lee",
-      "TeamA_P2": "Braid, James",
-      "TeamB_P1": "Vardon, Harry",
-      "TeamB_P2": "Love, Davis III",
-      "MP1_TeamA": "Trevino, Lee",
-      "MP1_TeamB": "Vardon, Harry",
-      "MP2_TeamA": "Braid, James",
-      "MP2_TeamB": "Love, Davis III",
+      "TeamA_P1": "Truszkowski, Mark",
+      "TeamA_P2": "McGuffin, Gary",
+      "TeamB_P1": "Salisbury, Jim",
+      "TeamB_P2": "Davis, Jay",
+      "MP1_TeamA": "Truszkowski, Mark",
+      "MP1_TeamB": "Salisbury, Jim",
+      "MP2_TeamA": "McGuffin, Gary",
+      "MP2_TeamB": "Davis, Jay",
       "MPSwapped": "",
       "StartHole": 16
     },
     {
       "MatchNum": 6,
-      "TeamA_P1": "McIlroy, Rory",
-      "TeamA_P2": "Middlecoff, Cary",
-      "TeamB_P1": "Nelson, Byron",
-      "TeamB_P2": "Goosen, Retief",
-      "MP1_TeamA": "McIlroy, Rory",
-      "MP1_TeamB": "Nelson, Byron",
-      "MP2_TeamA": "Middlecoff, Cary",
-      "MP2_TeamB": "Goosen, Retief",
+      "TeamA_P1": "Haskell, Ralf",
+      "TeamA_P2": "Alston, Rufus",
+      "TeamB_P1": "Rogers, Henry",
+      "TeamB_P2": "Rich, Ron",
+      "MP1_TeamA": "Haskell, Ralf",
+      "MP1_TeamB": "Rogers, Henry",
+      "MP2_TeamA": "Alston, Rufus",
+      "MP2_TeamB": "Rich, Ron",
       "MPSwapped": "",
       "StartHole": 17
     },
     {
       "MatchNum": 7,
-      "TeamA_P1": "Thomson, Peter",
-      "TeamA_P2": "Floyd, Raymond",
-      "TeamB_P1": "Miller, Johnny",
-      "TeamB_P2": "Harrington, Padraig",
-      "MP1_TeamA": "Thomson, Peter",
-      "MP1_TeamB": "Miller, Johnny",
-      "MP2_TeamA": "Floyd, Raymond",
-      "MP2_TeamB": "Harrington, Padraig",
+      "TeamA_P1": "Hood, Chuck",
+      "TeamA_P2": "Landry, Paul",
+      "TeamB_P1": "Schipani, Ray",
+      "TeamB_P2": "Upfield, Mike",
+      "MP1_TeamA": "Hood, Chuck",
+      "MP1_TeamB": "Schipani, Ray",
+      "MP2_TeamA": "Landry, Paul",
+      "MP2_TeamB": "Upfield, Mike",
       "MPSwapped": "",
       "StartHole": "18a"
     },
     {
       "MatchNum": 8,
-      "TeamA_P1": "Singh, Vijay",
-      "TeamA_P2": "Nelson, Larry",
-      "TeamB_P1": "Strange, Curtis",
-      "TeamB_P2": "Furyk, Jim",
-      "MP1_TeamA": "Singh, Vijay",
-      "MP1_TeamB": "Strange, Curtis",
-      "MP2_TeamA": "Nelson, Larry",
-      "MP2_TeamB": "Furyk, Jim",
+      "TeamA_P1": "Gurganus, Tom",
+      "TeamA_P2": "McEver, John",
+      "TeamB_P1": "Eiloo, Gary",
+      "TeamB_P2": "Woodard, Jim",
+      "MP1_TeamA": "Gurganus, Tom",
+      "MP1_TeamB": "Eiloo, Gary",
+      "MP2_TeamA": "McEver, John",
+      "MP2_TeamB": "Woodard, Jim",
       "MPSwapped": "",
       "StartHole": "18b"
     },
     {
       "MatchNum": 9,
-      "TeamA_P1": "Price, Nick",
-      "TeamA_P2": "Irwin, Hale",
-      "TeamB_P1": "Anderson, Willie",
-      "TeamB_P2": "Cotton, Henry",
-      "MP1_TeamA": "Price, Nick",
-      "MP1_TeamB": "Anderson, Willie",
-      "MP2_TeamA": "Irwin, Hale",
-      "MP2_TeamB": "Cotton, Henry",
+      "TeamA_P1": "Swinson, Stan",
+      "TeamA_P2": "Buchanan, Buck",
+      "TeamB_P1": "Nelson, Ellis",
+      "TeamB_P2": "Davis, Larry",
+      "MP1_TeamA": "Swinson, Stan",
+      "MP1_TeamB": "Nelson, Ellis",
+      "MP2_TeamA": "Buchanan, Buck",
+      "MP2_TeamB": "Davis, Larry",
       "MPSwapped": "",
       "StartHole": 1
     }
@@ -1337,14 +1356,11 @@ const EMBEDDED_SNAPSHOT = {
 // ===== SNAPSHOT END — paste this whole block (all three marked lines and
 //   everything between them) over the old SNAPSHOT block, in BOTH
 //   index.html and live.html =====
-// ===== SNAPSHOT END — paste this whole block (all three marked lines and
-//   everything between them) over the old SNAPSHOT block, in BOTH
-//   index.html and live.html =====
 // Bumped by hand every time this file changes — shown in the header next to
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-23b';
+const ADMIN_VERSION = '2026-09-24a';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -1356,6 +1372,35 @@ const ENV = (envParam === 'test' || envParam === 'live')
   : (location.href.toLowerCase().includes('test') ? 'test' : 'live');
 const CFG = CONFIG[ENV];
 const CFG_IS_PLACEHOLDER = !CFG.backendUrl || CFG.backendUrl.startsWith('PASTE_');
+
+// ================== LIVE-SITE BANNER (test site only) ==================
+// Once the tournament actually starts, anyone still opening the TEST site
+// should be nudged to the real one instead. Shows only when ENV is 'test'
+// and today's (local) date is on or after fromDate. Update `url` below if
+// the real site's address ever changes.
+const LIVE_BANNER = {
+  fromDate: '2026-09-30',
+  url: 'https://heritagelegends.github.io/legends-tournament-live/index.html',
+};
+(function initLiveBanner() {
+  if (ENV !== 'test') return;
+  try {
+    if (sessionStorage.getItem('legendsLiveBannerDismissed') === '1') return;
+  } catch (e) {}
+  const now = new Date();
+  const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  if (todayStr < LIVE_BANNER.fromDate) return;
+  const bar = document.getElementById('liveBanner');
+  const link = document.getElementById('liveBannerLink');
+  if (!bar || !link) return;
+  link.href = LIVE_BANNER.url;
+  bar.hidden = false;
+})();
+function dismissLiveBanner() {
+  const bar = document.getElementById('liveBanner');
+  if (bar) bar.hidden = true;
+  try { sessionStorage.setItem('legendsLiveBannerDismissed', '1'); } catch (e) {}
+}
 
 // ====================== GATE ======================
 // The admin PIN lives in the Settings sheet (AdminPIN) rather than hardcoded
