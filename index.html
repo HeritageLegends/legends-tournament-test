@@ -71,16 +71,6 @@
   }
   .gate input { text-align: center; font-size: 1.2rem; letter-spacing: 2px; }
   [hidden] { display: none !important; }
-  .live-banner {
-    position: sticky; top: 0; z-index: 9999; background: #ffd400; color: #3a2e00;
-    font-weight: 600; text-align: center; padding: 10px 40px 10px 14px; font-size: 0.95rem;
-  }
-  .live-banner a { color: #3a2e00; }
-  .live-banner-close {
-    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-    background: none; border: none; font-size: 1.3rem; line-height: 1; cursor: pointer;
-    color: #3a2e00; padding: 4px 8px;
-  }
   #rosterTable { table-layout: fixed; }
   .roster-team-col { width: 220px; }
   .roster-narrow-col { width: 80px; }
@@ -93,15 +83,6 @@
 </style>
 </head>
 <body>
-
-<!-- Shown only on the TEST site, only once the tournament has actually
-     started (see LIVE_BANNER below) — nudges anyone still on the test link
-     over to the real one. Dismissible for the rest of that browser tab's
-     session; reappears on a fresh visit. -->
-<div id="liveBanner" class="live-banner" hidden>
-  🏌️ The tournament is live — <a id="liveBannerLink" href="#" target="_blank" rel="noopener">use this link instead</a>
-  <button type="button" class="live-banner-close" onclick="dismissLiveBanner()" aria-label="Dismiss">×</button>
-</div>
 
 <div id="gate" class="gate">
   <h2>Legends Tournament Admin</h2>
@@ -401,7 +382,7 @@ const EMBEDDED_SNAPSHOT = {
     "TournamentName": "2026 Heritage Legends Tournament",
     "Day1Date": "2026-09-30",
     "Day2Date": "2026-10-01",
-    "TeamAName": "Canesin6",
+    "TeamAName": "CanesIn6",
     "TeamACaptain": "Kevin Kusilek",
     "TeamBName": "Birdie Boys",
     "TeamBCaptain": "Winston Shade",
@@ -448,7 +429,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 20.9,
       "Tee": "Red",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 5,
@@ -484,7 +465,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 16.1,
       "Tee": "Red",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 9,
@@ -533,7 +514,7 @@ const EMBEDDED_SNAPSHOT = {
     },
     {
       "PlayerID": 14,
-      "Name": "Gurganus, Tom",
+      "Name": "Gurganus, Tommy",
       "Team": "A",
       "HandicapIndex": 19.8,
       "Tee": "Red",
@@ -610,7 +591,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 16.1,
       "Tee": "Red",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 23,
@@ -664,7 +645,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 11.9,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 29,
@@ -718,7 +699,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 15.9,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 35,
@@ -736,7 +717,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 21.4,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 37,
@@ -772,7 +753,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 25.4,
       "Tee": "Red",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 41,
@@ -781,7 +762,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 14.4,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 42,
@@ -817,7 +798,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 25.2,
       "Tee": "Red",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 46,
@@ -826,7 +807,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 7.3,
       "Tee": "Gold",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 47,
@@ -898,7 +879,7 @@ const EMBEDDED_SNAPSHOT = {
       "HandicapIndex": 18.6,
       "Tee": "Red",
       "Active": "true",
-      "Scorekeeper": ""
+      "Scorekeeper": "true"
     },
     {
       "PlayerID": 55,
@@ -1128,7 +1109,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "Cobb, Randy",
       "TeamB_P1": "Colt, Dave",
       "TeamB_P2": "McCulloch, Wayne",
-      "StartHole": 13
+      "StartHole": "1A"
     },
     {
       "MatchNum": 2,
@@ -1136,7 +1117,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "Primm, Kirby",
       "TeamB_P1": "Shade, Winston",
       "TeamB_P2": "Luksis, Duke",
-      "StartHole": "14a"
+      "StartHole": "1B"
     },
     {
       "MatchNum": 3,
@@ -1144,7 +1125,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "Haines, Dan",
       "TeamB_P1": "Recchia, John",
       "TeamB_P2": "Dillon, Eric",
-      "StartHole": "14b"
+      "StartHole": "14"
     },
     {
       "MatchNum": 4,
@@ -1152,7 +1133,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "Truszkowski, Mark",
       "TeamB_P1": "Bacca, Tom",
       "TeamB_P2": "Davis, Jay",
-      "StartHole": 15
+      "StartHole": "15A"
     },
     {
       "MatchNum": 5,
@@ -1160,7 +1141,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "Buchanan, Buck",
       "TeamB_P1": "Salisbury, Jim",
       "TeamB_P2": "Upfield, Mike",
-      "StartHole": 16
+      "StartHole": "15B"
     },
     {
       "MatchNum": 6,
@@ -1168,7 +1149,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "Swinson, Stan",
       "TeamB_P1": "Rogers, Henry",
       "TeamB_P2": "Roane, Michael",
-      "StartHole": 17
+      "StartHole": "16"
     },
     {
       "MatchNum": 7,
@@ -1176,7 +1157,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "Owens, Bill",
       "TeamB_P1": "Schipani, Ray",
       "TeamB_P2": "Rich, Ron",
-      "StartHole": "18a"
+      "StartHole": "17A"
     },
     {
       "MatchNum": 8,
@@ -1184,7 +1165,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "McEver, John",
       "TeamB_P1": "Eiloo, Gary",
       "TeamB_P2": "Davis, Larry",
-      "StartHole": "18b"
+      "StartHole": "17B"
     },
     {
       "MatchNum": 9,
@@ -1192,7 +1173,7 @@ const EMBEDDED_SNAPSHOT = {
       "TeamA_P2": "Hood, Chuck",
       "TeamB_P1": "Nelson, Ellis",
       "TeamB_P2": "Woodard, Jim",
-      "StartHole": 1
+      "StartHole": "18"
     }
   ],
   "pairings2": [
@@ -1207,7 +1188,7 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "Kusilek, Kevin",
       "MP2_TeamB": "Shade, Winston",
       "MPSwapped": "",
-      "StartHole": 13
+      "StartHole": "1A"
     },
     {
       "MatchNum": 2,
@@ -1220,7 +1201,7 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "Primm, Kirby",
       "MP2_TeamB": "Luksis, Duke",
       "MPSwapped": "",
-      "StartHole": "14a"
+      "StartHole": "1B"
     },
     {
       "MatchNum": 3,
@@ -1233,7 +1214,7 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "Owens, Bill",
       "MP2_TeamB": "Roane, Michael",
       "MPSwapped": "",
-      "StartHole": "14b"
+      "StartHole": "14"
     },
     {
       "MatchNum": 4,
@@ -1246,7 +1227,7 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "Haines, Dan",
       "MP2_TeamB": "Dillon, Eric",
       "MPSwapped": "",
-      "StartHole": 15
+      "StartHole": "15A"
     },
     {
       "MatchNum": 5,
@@ -1259,7 +1240,7 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "McGuffin, Gary",
       "MP2_TeamB": "Davis, Jay",
       "MPSwapped": "",
-      "StartHole": 16
+      "StartHole": "15B"
     },
     {
       "MatchNum": 6,
@@ -1272,7 +1253,7 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "Alston, Rufus",
       "MP2_TeamB": "Rich, Ron",
       "MPSwapped": "",
-      "StartHole": 17
+      "StartHole": "16"
     },
     {
       "MatchNum": 7,
@@ -1285,7 +1266,7 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "Landry, Paul",
       "MP2_TeamB": "Upfield, Mike",
       "MPSwapped": "",
-      "StartHole": "18a"
+      "StartHole": "17A"
     },
     {
       "MatchNum": 8,
@@ -1298,7 +1279,7 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "McEver, John",
       "MP2_TeamB": "Woodard, Jim",
       "MPSwapped": "",
-      "StartHole": "18b"
+      "StartHole": "17B"
     },
     {
       "MatchNum": 9,
@@ -1311,45 +1292,45 @@ const EMBEDDED_SNAPSHOT = {
       "MP2_TeamA": "Buchanan, Buck",
       "MP2_TeamB": "Davis, Larry",
       "MPSwapped": "",
-      "StartHole": 1
+      "StartHole": "18"
     }
   ],
   "matchPins": [
     {
-      "MatchNum": "1",
-      "PIN": "1000"
+      "MatchNum": 1,
+      "PIN": "1111"
     },
     {
-      "MatchNum": "2",
-      "PIN": "2000"
+      "MatchNum": 2,
+      "PIN": "2222"
     },
     {
-      "MatchNum": "3",
-      "PIN": "3000"
+      "MatchNum": 3,
+      "PIN": "3333"
     },
     {
-      "MatchNum": "4",
-      "PIN": "4000"
+      "MatchNum": 4,
+      "PIN": "4444"
     },
     {
-      "MatchNum": "5",
-      "PIN": "5000"
+      "MatchNum": 5,
+      "PIN": "5555"
     },
     {
-      "MatchNum": "6",
-      "PIN": "6000"
+      "MatchNum": 6,
+      "PIN": "6666"
     },
     {
-      "MatchNum": "7",
-      "PIN": "7000"
+      "MatchNum": 7,
+      "PIN": "7777"
     },
     {
-      "MatchNum": "8",
-      "PIN": "8000"
+      "MatchNum": 8,
+      "PIN": "8888"
     },
     {
-      "MatchNum": "9",
-      "PIN": "9000"
+      "MatchNum": 9,
+      "PIN": "9999"
     }
   ]
 };
@@ -1360,7 +1341,7 @@ const EMBEDDED_SNAPSHOT = {
 // the live "Backend:" version (from Code.gs) so you can tell at a glance
 // whether the page you're looking at, and the Apps Script it's talking to,
 // are both up to date.
-const ADMIN_VERSION = '2026-09-24a';
+const ADMIN_VERSION = '2026-09-28b';
 
 // Environment detection: an explicit ?env=test or ?env=live in the URL always
 // wins (use this while testing the raw local file, e.g. index.html?env=test).
@@ -1372,35 +1353,6 @@ const ENV = (envParam === 'test' || envParam === 'live')
   : (location.href.toLowerCase().includes('test') ? 'test' : 'live');
 const CFG = CONFIG[ENV];
 const CFG_IS_PLACEHOLDER = !CFG.backendUrl || CFG.backendUrl.startsWith('PASTE_');
-
-// ================== LIVE-SITE BANNER (test site only) ==================
-// Once the tournament actually starts, anyone still opening the TEST site
-// should be nudged to the real one instead. Shows only when ENV is 'test'
-// and today's (local) date is on or after fromDate. Update `url` below if
-// the real site's address ever changes.
-const LIVE_BANNER = {
-  fromDate: '2026-09-30',
-  url: 'https://heritagelegends.github.io/legends-tournament-live/index.html',
-};
-(function initLiveBanner() {
-  if (ENV !== 'test') return;
-  try {
-    if (sessionStorage.getItem('legendsLiveBannerDismissed') === '1') return;
-  } catch (e) {}
-  const now = new Date();
-  const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-  if (todayStr < LIVE_BANNER.fromDate) return;
-  const bar = document.getElementById('liveBanner');
-  const link = document.getElementById('liveBannerLink');
-  if (!bar || !link) return;
-  link.href = LIVE_BANNER.url;
-  bar.hidden = false;
-})();
-function dismissLiveBanner() {
-  const bar = document.getElementById('liveBanner');
-  if (bar) bar.hidden = true;
-  try { sessionStorage.setItem('legendsLiveBannerDismissed', '1'); } catch (e) {}
-}
 
 // ====================== GATE ======================
 // The admin PIN lives in the Settings sheet (AdminPIN) rather than hardcoded
@@ -3027,12 +2979,42 @@ function lightenColorForFill(color) {
 function teamCellStyleAttr(color) {
   return ` style="background:${escapeAttr(lightenColorForFill(color))};"`;
 }
-// Roster names are stored "Last, First" — the printed scorecard's per-player
-// W/L/T row labels show just the last name to keep them short.
+// Roster names are stored "Last, First". Most display spots show just the
+// last name to keep things short — but when two players on the roster share
+// a last name (e.g. two Davises), that alone is ambiguous, so a first
+// initial is appended for BOTH of them: "Davis J" / "Davis L". Anyone whose
+// last name is unique still shows as plain "Davis". Duplicates are computed
+// fresh from the current roster on every call (the roster is small, so this
+// is cheap) rather than cached, so it stays correct if the roster changes.
+// Doesn't further disambiguate two players who'd ALSO share a first initial
+// (e.g. "Davis, Jay" and "Davis, James") — rare enough not to handle here;
+// use a Roster nickname-style edit if that ever comes up.
+function lastNameRaw_(name) {
+  if (!name) return '';
+  const idx = name.indexOf(',');
+  return (idx === -1 ? name : name.slice(0, idx)).trim();
+}
+function duplicateLastNames_() {
+  const counts = {};
+  (roster || []).forEach((p) => {
+    const ln = lastNameRaw_(p.Name);
+    if (!ln) return;
+    const key = ln.toLowerCase();
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  const dupes = new Set();
+  Object.keys(counts).forEach((k) => { if (counts[k] > 1) dupes.add(k); });
+  return dupes;
+}
 function lastName(name) {
   if (!name) return '?';
+  const ln = lastNameRaw_(name);
+  if (!ln) return name;
+  if (!duplicateLastNames_().has(ln.toLowerCase())) return ln;
   const idx = name.indexOf(',');
-  return idx === -1 ? name : name.slice(0, idx).trim();
+  const first = idx === -1 ? '' : name.slice(idx + 1).trim();
+  const initial = first ? first.charAt(0).toUpperCase() : '';
+  return initial ? `${ln} ${initial}` : ln;
 }
 </script>
 </body>
