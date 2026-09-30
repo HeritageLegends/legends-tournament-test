@@ -225,6 +225,36 @@
 </head>
 <body>
 
+<!-- TEST-SITE DISABLED OVERLAY — must be the very first thing in <body> so it
+     paints before anything else (entry gate, PIN fields, etc.). Detects the
+     same way the app's own ENV logic below does (an explicit ?env= wins,
+     otherwise "test" in the page's own URL) but is duplicated here, in a
+     tiny standalone inline script, on purpose: it needs to run and paint
+     immediately, before the rest of this page's markup/script even finishes
+     loading. Safe to upload this exact file to BOTH the TEST and LIVE repos
+     — on the LIVE URL, ENV resolves to "live" here and this does nothing. -->
+<script>
+(function () {
+  var envParam = new URLSearchParams(location.search).get('env');
+  var ENV = (envParam === 'test' || envParam === 'live')
+    ? envParam
+    : (location.href.toLowerCase().includes('test') ? 'test' : 'live');
+  if (ENV === 'test') {
+    document.write(
+      '<div style="position:fixed;inset:0;z-index:999999;background:#1a1a1a;color:#fff;' +
+      'display:flex;align-items:center;justify-content:center;padding:24px;' +
+      'font-family:Arial,Helvetica,sans-serif;text-align:center;">' +
+        '<div style="max-width:460px;">' +
+          '<h1 style="font-size:22px;margin:0 0 14px;">This test site is disabled</h1>' +
+          '<p style="font-size:16px;line-height:1.5;margin:0 0 22px;">This is the TEST site and is not being used for the tournament. Go to the live site to enter scores or view the scoreboard:</p>' +
+          '<a href="https://heritagelegends.github.io/legends-tournament-live/live.html" style="display:inline-block;background:#2e7d32;color:#fff;font-weight:bold;font-size:16px;padding:12px 24px;border-radius:8px;text-decoration:none;">Go to the live site</a>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+})();
+</script>
+
 <!-- ENTRY GATE — shown first, before either tab, so every visitor says up
      front whether they're keeping score (and gets routed straight to their
      match by PIN) or just watching (and goes straight to the Scoreboard). -->
